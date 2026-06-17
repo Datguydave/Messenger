@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spark — Messaging</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     AUTH SCREENS
+════════════════════════════════════════════ -->
+<div id="auth-screen" class="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">⚡ Spark</div>
+
+    <!-- LOGIN -->
+    <div id="login-view" class="auth-view active">
+      <h2>Welcome back!</h2>
+      <p class="auth-sub">We're so excited to see you again!</p>
+      <div class="form-group">
+        <label>EMAIL</label>
+        <input id="login-email" type="email" placeholder="Enter your email" autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label>PASSWORD</label>
+        <input id="login-password" type="password" placeholder="Enter your password" autocomplete="current-password" />
+      </div>
+      <div id="login-error" class="auth-error"></div>
+      <button id="login-btn" class="btn-primary full-width">Log In</button>
+      <p class="auth-switch">Need an account? <a href="#" id="go-register">Register</a></p>
+    </div>
+
+    <!-- REGISTER -->
+    <div id="register-view" class="auth-view">
+      <h2>Create an account</h2>
+      <div class="form-group">
+        <label>EMAIL</label>
+        <input id="reg-email" type="email" placeholder="Enter your email" autocomplete="email" />
+      </div>
+      <div class="form-group">
+        <label>USERNAME</label>
+        <input id="reg-username" type="text" placeholder="Choose a username" maxlength="32" />
+      </div>
+      <div class="form-group">
+        <label>PASSWORD</label>
+        <input id="reg-password" type="password" placeholder="Create a password" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label>PROFILE PICTURE (OPTIONAL)</label>
+        <input id="reg-avatar" type="file" accept="image/*" class="file-input" />
+        <label for="reg-avatar" class="file-label">Choose image…</label>
+        <span id="reg-avatar-name" class="file-name">No file chosen</span>
+      </div>
+      <div id="register-error" class="auth-error"></div>
+      <button id="register-btn" class="btn-primary full-width">Continue</button>
+      <p class="auth-switch">Already have an account? <a href="#" id="go-login">Log in</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MAIN APP
+════════════════════════════════════════════ -->
+<div id="app" class="app hidden">
+
+  <!-- SERVER RAIL -->
+  <nav id="server-rail" class="server-rail">
+    <div class="rail-icon home-icon active" id="home-btn" title="Home / DMs">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
+    </div>
+    <div class="rail-divider"></div>
+    <div id="server-icons-list"><!-- injected by servers.js --></div>
+    <div class="rail-icon add-server-btn" id="add-server-btn" title="Add a Server">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 13H13v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+    </div>
+  </nav>
+
+  <!-- CHANNEL / DM SIDEBAR -->
+  <aside id="channel-sidebar" class="channel-sidebar">
+    <!-- DM list (shown when Home is active) -->
+    <div id="dm-panel" class="sidebar-panel active">
+      <div class="sidebar-search">
+        <input id="search-input" type="text" placeholder="Find or start a conversation" />
+      </div>
+      <div class="sidebar-section-label">DIRECT MESSAGES</div>
+      <div id="dm-list"><!-- injected by friends.js --></div>
+      <div class="sidebar-section-label sidebar-section-action" id="open-friends-btn">
+        FRIENDS <span class="section-add">+</span>
+      </div>
+    </div>
+
+    <!-- Channel list (shown when a server is active) -->
+    <div id="server-panel" class="sidebar-panel">
+      <div id="server-header" class="server-header">
+        <span id="server-name-label">Server Name</span>
+        <button id="server-settings-btn" class="icon-btn" title="Server Settings">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.32.07-.65.07-.98s-.03-.67-.07-1l2.16-1.63c.19-.15.24-.42.12-.64l-2.05-3.55c-.12-.22-.39-.3-.61-.22l-2.55 1c-.53-.4-1.1-.73-1.73-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.63.25-1.2.58-1.73.98l-2.55-1c-.22-.08-.49 0-.61.22L2.74 8.87c-.12.21-.08.49.12.64L5.02 11.1c-.04.33-.07.66-.07 1s.03.66.07.98L2.86 14.71c-.19.15-.24.42-.12.64l2.05 3.55c.12.22.39.3.61.22l2.55-1c.53.4 1.1.73 1.73.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.63-.25 1.2-.58 1.73-.98l2.55 1c.22.08.49 0 .61-.22l2.05-3.55c.12-.21.07-.49-.12-.64l-2.16-1.59z"/></svg>
+        </button>
+      </div>
+      <div class="sidebar-section-label sidebar-section-action" id="create-channel-btn">
+        TEXT CHANNELS <span class="section-add">+</span>
+      </div>
+      <div id="channel-list"><!-- injected by channels.js --></div>
+      <div class="sidebar-section-label">VOICE CHANNELS</div>
+      <div id="voice-channel-list"></div>
+    </div>
+
+    <!-- Bottom user bar -->
+    <div class="user-bar">
+      <div class="user-bar-avatar" id="my-avatar-bar">
+        <div class="status-dot online" id="my-status-dot"></div>
+      </div>
+      <div class="user-bar-info">
+        <div class="user-bar-name" id="my-username-bar">Username</div>
+        <div class="user-bar-tag" id="my-status-bar">Online</div>
+      </div>
+      <div class="user-bar-actions">
+        <button class="icon-btn" id="open-settings-btn" title="User Settings">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 15.5A3.5 3.5 0 018.5 12 3.5 3.5 0 0112 8.5a3.5 3.5 0 013.5 3.5 3.5 3.5 0 01-3.5 3.5m7.43-2.92c.04-.32.07-.65.07-.98s-.03-.67-.07-1l2.16-1.63c.19-.15.24-.42.12-.64l-2.05-3.55c-.12-.22-.39-.3-.61-.22l-2.55 1c-.53-.4-1.1-.73-1.73-.98l-.38-2.65C14.46 2.18 14.25 2 14 2h-4c-.25 0-.46.18-.49.42l-.38 2.65c-.63.25-1.2.58-1.73.98l-2.55-1c-.22-.08-.49 0-.61.22L2.74 8.87c-.12.21-.08.49.12.64L5.02 11.1c-.04.33-.07.66-.07 1s.03.66.07.98L2.86 14.71c-.19.15-.24.42-.12.64l2.05 3.55c.12.22.39.3.61.22l2.55-1c.53.4 1.1.73 1.73.98l.38 2.65c.03.24.24.42.49.42h4c.25 0 .46-.18.49-.42l.38-2.65c.63-.25 1.2-.58 1.73-.98l2.55 1c.22.08.49 0 .61-.22l2.05-3.55c.12-.21.07-.49-.12-.64l-2.16-1.59z"/></svg>
+        </button>
+        <button class="icon-btn danger" id="logout-btn" title="Log Out">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CHAT AREA -->
+  <main id="chat-main" class="chat-main">
+    <!-- Welcome / empty state -->
+    <div id="welcome-view" class="welcome-view active">
+      <div class="welcome-icon">⚡</div>
+      <h2>Welcome to Spark!</h2>
+      <p>Select a server, channel, or start a direct message to get chatting.</p>
+      <button class="btn-primary" id="welcome-add-server">Create or join a server</button>
+    </div>
+
+    <!-- Chat view -->
+    <div id="chat-view" class="chat-view">
+      <div class="chat-header" id="chat-header">
+        <div class="chat-header-left">
+          <span class="channel-hash">#</span>
+          <span id="chat-channel-name">general</span>
+        </div>
+        <div class="chat-header-right">
+          <button class="icon-btn" id="toggle-members-btn" title="Show Members">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          </button>
+          <input id="chat-search" type="text" placeholder="Search messages…" class="chat-search-input" />
+        </div>
+      </div>
+
+      <div class="messages-wrap">
+        <div id="messages-list" class="messages-list"><!-- injected by chat.js --></div>
+        <div id="typing-indicator" class="typing-indicator hidden"></div>
+      </div>
+
+      <div class="message-input-area">
+        <div class="message-input-bar">
+          <button class="attach-btn" id="attach-btn" title="Upload File">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 015 0v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5a2.5 2.5 0 005 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
+          </button>
+          <input id="attach-file-input" type="file" accept="image/*,video/*,.pdf,.zip" class="hidden" />
+          <input id="message-input" type="text" placeholder="Message #general" maxlength="2000" />
+          <button class="emoji-btn" id="emoji-btn" title="Emoji">😊</button>
+          <button class="send-btn" id="send-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
+        </div>
+        <div id="emoji-picker" class="emoji-picker hidden"></div>
+        <div id="attachment-preview" class="attachment-preview hidden">
+          <span id="attachment-preview-name"></span>
+          <button id="clear-attachment" class="icon-btn">✕</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- MEMBER SIDEBAR -->
+  <aside id="member-sidebar" class="member-sidebar">
+    <div class="sidebar-section-label">ONLINE — <span id="online-count">0</span></div>
+    <div id="online-members-list"></div>
+    <div class="sidebar-section-label">OFFLINE — <span id="offline-count">0</span></div>
+    <div id="offline-members-list"></div>
+  </aside>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     MODALS
+════════════════════════════════════════════ -->
+
+<!-- Friends Modal -->
+<div id="friends-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Friends</h3>
+      <button class="modal-close" data-close="friends-modal">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" data-tab="friends-all">All</button>
+      <button class="tab-btn" data-tab="friends-pending">Pending</button>
+      <button class="tab-btn accent" data-tab="friends-add">Add Friend</button>
+    </div>
+    <div id="friends-all" class="tab-content active">
+      <div id="friends-list-all"><!-- injected by friends.js --></div>
+    </div>
+    <div id="friends-pending" class="tab-content">
+      <div class="sidebar-section-label">INCOMING</div>
+      <div id="friends-incoming"><!-- injected by friends.js --></div>
+      <div class="sidebar-section-label">OUTGOING</div>
+      <div id="friends-outgoing"><!-- injected by friends.js --></div>
+    </div>
+    <div id="friends-add" class="tab-content">
+      <p>You can add friends with their username.</p>
+      <div class="form-row">
+        <input id="add-friend-input" type="text" placeholder="Enter a username" />
+        <button id="add-friend-btn" class="btn-primary">Send Request</button>
+      </div>
+      <div id="add-friend-status"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Create / Join Server Modal -->
+<div id="server-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="server-modal-title">Create a Server</h3>
+      <button class="modal-close" data-close="server-modal">✕</button>
+    </div>
+    <div class="modal-tabs">
+      <button class="tab-btn active" data-tab="create-server-tab">Create</button>
+      <button class="tab-btn" data-tab="join-server-tab">Join</button>
+    </div>
+    <div id="create-server-tab" class="tab-content active">
+      <div class="form-group">
+        <label>SERVER NAME</label>
+        <input id="server-name-input" type="text" placeholder="My awesome server" maxlength="50" />
+      </div>
+      <div class="form-group">
+        <label>SERVER ICON (OPTIONAL)</label>
+        <input id="server-icon-input" type="file" accept="image/*" class="file-input" />
+        <label for="server-icon-input" class="file-label">Choose icon…</label>
+        <span id="server-icon-name" class="file-name">No file chosen</span>
+      </div>
+      <div id="create-server-error" class="auth-error"></div>
+      <button id="create-server-btn" class="btn-primary full-width">Create Server</button>
+    </div>
+    <div id="join-server-tab" class="tab-content">
+      <div class="form-group">
+        <label>SERVER ID</label>
+        <input id="join-server-id-input" type="text" placeholder="Enter a server ID" />
+      </div>
+      <div id="join-server-error" class="auth-error"></div>
+      <button id="join-server-btn" class="btn-primary full-width">Join Server</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create Channel Modal -->
+<div id="channel-modal" class="modal-overlay hidden">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <h3>Create Channel</h3>
+      <button class="modal-close" data-close="channel-modal">✕</button>
+    </div>
+    <div class="form-group">
+      <label>CHANNEL TYPE</label>
+      <div class="radio-group">
+        <label class="radio-label"><input type="radio" name="ch-type" value="text" checked /> # Text</label>
+        <label class="radio-label"><input type="radio" name="ch-type" value="voice" /> 🔊 Voice (placeholder)</label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>CHANNEL NAME</label>
+      <input id="channel-name-input" type="text" placeholder="new-channel" maxlength="32" />
+    </div>
+    <div id="channel-modal-error" class="auth-error"></div>
+    <button id="create-channel-confirm-btn" class="btn-primary full-width">Create Channel</button>
+  </div>
+</div>
+
+<!-- Server Settings Modal -->
+<div id="server-settings-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Server Settings</h3>
+      <button class="modal-close" data-close="server-settings-modal">✕</button>
+    </div>
+    <div class="form-group">
+      <label>SERVER NAME</label>
+      <input id="ss-name-input" type="text" placeholder="Server name" />
+    </div>
+    <div class="form-group">
+      <label>SERVER ID (share this to invite people)</label>
+      <div class="copy-row">
+        <input id="ss-id-display" type="text" readonly />
+        <button id="copy-server-id-btn" class="btn-secondary">Copy</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button id="ss-save-btn" class="btn-primary">Save Changes</button>
+      <button id="ss-leave-btn" class="btn-danger">Leave Server</button>
+      <button id="ss-delete-btn" class="btn-danger hidden">Delete Server</button>
+    </div>
+  </div>
+</div>
+
+<!-- User Settings Modal -->
+<div id="settings-modal" class="modal-overlay hidden">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3>User Settings</h3>
+      <button class="modal-close" data-close="settings-modal">✕</button>
+    </div>
+    <div class="settings-layout">
+      <nav class="settings-nav">
+        <button class="settings-nav-btn active" data-section="profile-section">My Account</button>
+        <button class="settings-nav-btn" data-section="status-section">Status</button>
+        <button class="settings-nav-btn" data-section="theme-section">Appearance</button>
+      </nav>
+      <div class="settings-content">
+        <!-- Profile -->
+        <div id="profile-section" class="settings-section active">
+          <div class="avatar-edit-area">
+            <div class="avatar-preview" id="settings-avatar-preview"></div>
+            <div>
+              <input id="settings-avatar-input" type="file" accept="image/*" class="file-input" />
+              <label for="settings-avatar-input" class="btn-secondary">Change Avatar</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>USERNAME</label>
+            <input id="settings-username" type="text" maxlength="32" />
+          </div>
+          <div class="form-group">
+            <label>ABOUT ME</label>
+            <textarea id="settings-about" rows="3" placeholder="Tell people about yourself…" maxlength="200"></textarea>
+          </div>
+          <div id="settings-profile-msg" class="auth-error"></div>
+          <button id="save-profile-btn" class="btn-primary">Save Changes</button>
+        </div>
+        <!-- Status -->
+        <div id="status-section" class="settings-section">
+          <div class="form-group">
+            <label>SET STATUS</label>
+            <div class="status-options">
+              <label class="status-option"><input type="radio" name="status-radio" value="Online" /> <span class="status-dot online"></span> Online</label>
+              <label class="status-option"><input type="radio" name="status-radio" value="Idle" /> <span class="status-dot idle"></span> Idle</label>
+              <label class="status-option"><input type="radio" name="status-radio" value="Do Not Disturb" /> <span class="status-dot dnd"></span> Do Not Disturb</label>
+              <label class="status-option"><input type="radio" name="status-radio" value="Offline" /> <span class="status-dot offline"></span> Invisible</label>
+            </div>
+          </div>
+          <button id="save-status-btn" class="btn-primary">Save Status</button>
+        </div>
+        <!-- Theme -->
+        <div id="theme-section" class="settings-section">
+          <div class="form-group">
+            <label>THEME</label>
+            <div class="theme-options">
+              <button class="theme-btn active" data-theme="dark">Dark</button>
+              <button class="theme-btn" data-theme="light">Light</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- User Profile Popup -->
+<div id="profile-popup" class="profile-popup hidden">
+  <div class="profile-popup-banner"></div>
+  <div class="profile-popup-body">
+    <div class="profile-popup-avatar" id="popup-avatar"></div>
+    <div class="profile-popup-info">
+      <div class="profile-popup-name" id="popup-username"></div>
+      <div class="profile-popup-status" id="popup-status"></div>
+      <div class="profile-popup-about" id="popup-about"></div>
+    </div>
+    <div class="profile-popup-actions" id="popup-actions"></div>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div id="context-menu" class="context-menu hidden">
+  <div id="context-menu-items"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast hidden"></div>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+
+<!-- App Scripts (order matters) -->
+<script src="firebase.js"></script>
+<script src="storage.js"></script>
+<script src="auth.js"></script>
+<script src="profile.js"></script>
+<script src="notifications.js"></script>
+<script src="friends.js"></script>
+<script src="servers.js"></script>
+<script src="channels.js"></script>
+<script src="chat.js"></script>
+<script src="settings.js"></script>
+
+</body>
+</html>
