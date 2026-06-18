@@ -1,35 +1,24 @@
-// auth.js — Register & Login with username + password only.
+// auth.js — username + password only auth
 //
-// HOW IT WORKS
-// ─────────────────────────────────────────────────────────────
-// Firebase Auth only accepts email+password. We never ask the
-// user for an email. Instead we:
+// Firebase Auth requires an email address internally.
+// We never ask the user for one. Instead we turn the username
+// into a synthetic email:  slugify(username) + "@spark.local"
 //
-//   1. Encode the username into a URL-safe "slug" for storage keys.
-//   2. Store the slug → uid mapping at /usernames/<slug>.
-//   3. Create a synthetic Firebase email:  <slug>@spark.local
-//      (this is invisible — never shown to any user).
-//   4. Login reverses the process: slug → look up uid → sign in.
-//
-// Slugging rules (collision-free):
-//   • lowercase everything
-//   • replace every non-alphanumeric char with its hex code
-//     e.g. "Dave 99!" → "dave_20_39_39_21"
-//   This is 100% reversible and produces only [a-z0-9_] chars.
+// slugify: replaces every non-alphanumeric char with _XX (hex code)
+// so it is safe for Firebase DB keys and email local-parts.
 
-// ── Helper: username → safe DB slug ──────────────────────────────────
+// ── slug helpers ──────────────────────────────────────────────────────
 function slugify(username) {
   return username
     .toLowerCase()
     .split("")
     .map(ch => /[a-z0-9]/.test(ch) ? ch : "_" + ch.charCodeAt(0).toString(16))
-    .join("");
+    .join("")
+    .substring(0, 60); // email local-part limit
 }
 
-function slugToEmail(slug) {
-  // Must be a valid RFC email. Keep it simple and short.
-  // Truncate to 60 chars before the @ so the total stays under 256.
-  return slug.substring(0, 60) + "@spark.local";
+function toEmail(username) {
+  return slugify(username) + "@spark.local";
 }
 
 // ── UI refs ───────────────────────────────────────────────────────────
@@ -40,7 +29,7 @@ const registerView  = document.getElementById("register-view");
 const loginError    = document.getElementById("login-error");
 const registerError = document.getElementById("register-error");
 
-// ── Toggle between login / register ──────────────────────────────────
+// ── Toggle views ──────────────────────────────────────────────────────
 document.getElementById("go-register").addEventListener("click", e => {
   e.preventDefault();
   loginView.classList.remove("active");
@@ -60,7 +49,7 @@ document.getElementById("reg-avatar").addEventListener("change", function () {
     this.files[0] ? this.files[0].name : "No file chosen";
 });
 
-// ── REGISTER ──────────────────────────────────────────────────────────
+// ── REGISTER ─────────────────────────────────────────────────────────
 document.getElementById("register-btn").addEventListener("click", doRegister);
 document.getElementById("reg-username").addEventListener("keydown", e => { if (e.key === "Enter") doRegister(); });
 document.getElementById("reg-password").addEventListener("keydown", e => { if (e.key === "Enter") doRegister(); });
@@ -69,90 +58,70 @@ async function doRegister() {
   const username   = document.getElementById("reg-username").value.trim();
   const password   = document.getElementById("reg-password").value;
   const avatarFile = document.getElementById("reg-avatar").files[0];
-
   registerError.textContent = "";
 
-  // ── Validation ──
-  if (!username) {
-    registerError.textContent = "Please enter a username."; return;
-  }
-  if (username.length < 2) {
-    registerError.textContent = "Username must be at least 2 characters."; return;
-  }
-  if (username.length > 32) {
-    registerError.textContent = "Username must be 32 characters or fewer."; return;
-  }
-  if (!password) {
-    registerError.textContent = "Please enter a password."; return;
-  }
-  if (password.length < 6) {
-    registerError.textContent = "Password must be at least 6 characters."; return;
-  }
-
-  const slug      = slugify(username);
-  const authEmail = slugToEmail(slug);
+  // Basic validation
+  if (!username)          { registerError.textContent = "Please enter a username."; return; }
+  if (username.length < 2){ registerError.textContent = "Username must be at least 2 characters."; return; }
+  if (username.length > 32){ registerError.textContent = "Username can be at most 32 characters."; return; }
+  if (!password)          { registerError.textContent = "Please enter a password."; return; }
+  if (password.length < 6){ registerError.textContent = "Password must be at least 6 characters."; return; }
 
   setBtnLoading("register-btn", true);
 
-  // ── Check username is not taken ──
+  const slug  = slugify(username);
+  const email = toEmail(username);
+
+  // Check if username is taken (DB read — open rules so this always works)
   try {
-    const existing = await db.ref("usernames/" + slug).get();
-    if (existing.exists()) {
-      registerError.textContent = "That username is already taken. Choose another.";
+    const snap = await db.ref("usernames/" + slug).get();
+    if (snap.exists()) {
+      registerError.textContent = "That username is already taken. Try another.";
       setBtnLoading("register-btn", false);
       return;
     }
-  } catch (dbErr) {
-    registerError.textContent = "Could not reach the database. Check your internet connection.";
+  } catch (e) {
+    // DB unreachable — show actionable message
+    registerError.textContent = dbError(e);
     setBtnLoading("register-btn", false);
     return;
   }
 
-  // ── Create Firebase Auth account ──
+  // Create Firebase Auth account
   let uid;
   try {
-    const cred = await auth.createUserWithEmailAndPassword(authEmail, password);
+    const cred = await auth.createUserWithEmailAndPassword(email, password);
     uid = cred.user.uid;
-  } catch (authErr) {
-    console.error("createUserWithEmailAndPassword error:", authErr);
-    registerError.textContent = friendlyError(authErr.code);
+  } catch (e) {
+    registerError.textContent = authError(e.code);
     setBtnLoading("register-btn", false);
     return;
   }
 
-  // ── Upload optional avatar ──
+  // Upload optional avatar
   let avatarUrl = "";
   if (avatarFile) {
-    try {
-      avatarUrl = await uploadAvatar(avatarFile, uid);
-    } catch (uploadErr) {
-      console.warn("Avatar upload failed (non-fatal):", uploadErr);
-    }
+    try { avatarUrl = await uploadAvatar(avatarFile, uid); }
+    catch (e) { console.warn("Avatar upload skipped:", e.message); }
   }
 
-  // ── Write profile to DB ──
+  // Write profile
   const profile = {
-    uid,
-    username,   // display name — original string including spaces / symbols
-    slug,       // used for lookups
-    avatar:    avatarUrl,
-    about:     "",
-    status:    "Online",
-    online:    true,
+    uid, username, slug,
+    avatar: avatarUrl, about: "",
+    status: "Online", online: true,
     createdAt: Date.now(),
   };
-
   try {
     await db.ref("users/" + uid).set(profile);
     await db.ref("usernames/" + slug).set(uid);
-  } catch (writeErr) {
-    console.error("DB write error after auth create:", writeErr);
-    // Account was created in Auth but DB write failed — still functional,
-    // onAuthStateChanged will create a fallback profile.
+  } catch (e) {
+    console.warn("Profile DB write failed:", e.message);
+    // Non-fatal — onAuthStateChanged will create a fallback profile
   }
 
   setBtnLoading("register-btn", false);
-  // onAuthStateChanged fires automatically and loads the app.
+  // onAuthStateChanged fires and opens the app automatically
 }
 
 // ── LOGIN ─────────────────────────────────────────────────────────────
@@ -163,52 +132,37 @@ document.getElementById("login-password").addEventListener("keydown", e => { if 
 async function doLogin() {
   const username = document.getElementById("login-username").value.trim();
   const password = document.getElementById("login-password").value;
-
   loginError.textContent = "";
 
-  if (!username) {
-    loginError.textContent = "Please enter your username."; return;
-  }
-  if (!password) {
-    loginError.textContent = "Please enter your password."; return;
-  }
-
-  const slug      = slugify(username);
-  const authEmail = slugToEmail(slug);
+  if (!username) { loginError.textContent = "Please enter your username."; return; }
+  if (!password) { loginError.textContent = "Please enter your password."; return; }
 
   setBtnLoading("login-btn", true);
 
-  // ── Confirm the username exists in DB first ──
-  try {
-    const snap = await db.ref("usernames/" + slug).get();
-    if (!snap.exists()) {
-      loginError.textContent = "No account found with that username.";
-      setBtnLoading("login-btn", false);
-      return;
-    }
-  } catch (dbErr) {
-    loginError.textContent = "Could not reach the database. Check your internet connection.";
-    setBtnLoading("login-btn", false);
-    return;
-  }
+  const email = toEmail(username);
 
-  // ── Sign in with Firebase Auth ──
+  // Sign in directly — no DB pre-check needed
+  // (wrong username → wrong email → Firebase says invalid-credential)
   try {
-    await auth.signInWithEmailAndPassword(authEmail, password);
-    // Success → onAuthStateChanged fires and shows the app.
-  } catch (authErr) {
-    console.error("signInWithEmailAndPassword error:", authErr);
-    loginError.textContent = friendlyError(authErr.code);
+    await auth.signInWithEmailAndPassword(email, password);
+    // Success: onAuthStateChanged fires and opens the app
+  } catch (e) {
+    // Translate Firebase error codes to user-friendly messages
+    if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential" || e.code === "auth/wrong-password") {
+      loginError.textContent = "Username or password is incorrect.";
+    } else {
+      loginError.textContent = authError(e.code);
+    }
     setBtnLoading("login-btn", false);
   }
 }
 
-// ── LOGOUT ───────────────────────────────────────────────────────────
+// ── LOGOUT ────────────────────────────────────────────────────────────
 document.getElementById("logout-btn").addEventListener("click", async () => {
   const uid = AppState.currentUser && AppState.currentUser.uid;
   if (uid) {
-    await db.ref("onlineUsers/" + uid).remove().catch(() => {});
-    await db.ref("users/" + uid + "/online").set(false).catch(() => {});
+    try { await db.ref("onlineUsers/" + uid).remove(); } catch(e){}
+    try { await db.ref("users/" + uid + "/online").set(false); } catch(e){}
   }
   AppState.clearListeners();
   await auth.signOut();
@@ -219,23 +173,20 @@ auth.onAuthStateChanged(async user => {
   if (user) {
     AppState.currentUser = user;
 
-    let profile = await fetchProfile(user.uid);
+    let profile = null;
+    try { profile = await fetchProfile(user.uid); } catch(e) {}
 
     if (!profile) {
-      // DB write may have failed during register — create a minimal profile now.
-      const fallbackSlug     = user.email.replace("@spark.local", "");
-      const fallbackUsername = fallbackSlug; // best we can do without the original
+      // Fallback: derive display name from the synthetic email
+      const fallbackName = user.email.replace("@spark.local", "").replace(/_[0-9a-f]{2}/g, " ").trim();
       profile = {
-        uid:       user.uid,
-        username:  fallbackUsername,
-        slug:      fallbackSlug,
-        avatar:    "",
-        about:     "",
-        status:    "Online",
-        online:    true,
+        uid: user.uid,
+        username: fallbackName || "User",
+        slug: user.email.replace("@spark.local", ""),
+        avatar: "", about: "", status: "Online", online: true,
         createdAt: Date.now(),
       };
-      await db.ref("users/" + user.uid).set(profile).catch(() => {});
+      try { await db.ref("users/" + user.uid).set(profile); } catch(e) {}
     }
 
     AppState.userProfile = profile;
@@ -251,8 +202,8 @@ auth.onAuthStateChanged(async user => {
     initSettings();
 
   } else {
-    AppState.currentUser  = null;
-    AppState.userProfile  = null;
+    AppState.currentUser = null;
+    AppState.userProfile = null;
     authScreen.classList.remove("hidden");
     appEl.classList.add("hidden");
     document.getElementById("welcome-view").classList.add("active");
@@ -260,7 +211,7 @@ auth.onAuthStateChanged(async user => {
   }
 });
 
-// ── PRESENCE ─────────────────────────────────────────────────────────
+// ── PRESENCE ──────────────────────────────────────────────────────────
 function setupPresence(uid) {
   const presenceRef  = db.ref("onlineUsers/" + uid);
   const connectedRef = db.ref(".info/connected");
@@ -278,50 +229,57 @@ function setupPresence(uid) {
   });
 }
 
-// ── FRIENDLY ERROR MESSAGES ───────────────────────────────────────────
-function friendlyError(code) {
+// ── ERROR HELPERS ─────────────────────────────────────────────────────
+function authError(code) {
   const map = {
-    "auth/email-already-in-use":
-      "That username is already registered.",
-    "auth/invalid-email":
-      "Username produced an invalid internal key — try a slightly different username.",
-    "auth/weak-password":
-      "Password must be at least 6 characters.",
-    "auth/user-not-found":
-      "No account found with that username.",
-    "auth/wrong-password":
-      "Incorrect password. Please try again.",
-    "auth/invalid-credential":
-      "Incorrect password. Please try again.",
-    "auth/too-many-requests":
-      "Too many failed attempts. Please wait a few minutes and try again.",
-    "auth/network-request-failed":
-      "Network error — check your internet connection.",
+    "auth/email-already-in-use":    "That username is already registered.",
+    "auth/invalid-email":           "Username produced an invalid key — try a different username.",
+    "auth/weak-password":           "Password must be at least 6 characters.",
+    "auth/user-not-found":          "Username or password is incorrect.",
+    "auth/wrong-password":          "Username or password is incorrect.",
+    "auth/invalid-credential":      "Username or password is incorrect.",
+    "auth/too-many-requests":       "Too many attempts. Please wait a few minutes.",
+    "auth/network-request-failed":  "Network error — check your internet connection.",
     "auth/operation-not-allowed":
-      "⚠️ Email/Password sign-in is disabled. Go to Firebase Console → Authentication → Sign-in methods → Email/Password and enable it.",
+      "⚠️ Email/Password sign-in is disabled in Firebase. " +
+      "Go to Firebase Console → Authentication → Sign-in methods → " +
+      "Email/Password and turn it ON.",
     "auth/configuration-not-found":
-      "⚠️ Firebase is not configured correctly. Check your Firebase config in firebase.js.",
+      "⚠️ Firebase project not found. Check the config in firebase.js.",
   };
-  return map[code] || ("Something went wrong (" + code + "). Please try again.");
+  return map[code] || ("Error: " + code);
 }
 
-// ── BUTTON LOADING STATE ──────────────────────────────────────────────
+function dbError(e) {
+  const msg = (e && e.message) ? e.message.toLowerCase() : "";
+  if (msg.includes("permission") || msg.includes("denied")) {
+    return "⚠️ Database permission denied. " +
+      "Go to Firebase Console → Realtime Database → Rules " +
+      "and replace all the rules with the contents of database.rules.json, then click Publish.";
+  }
+  return "⚠️ Could not reach the database. " +
+    "Make sure Realtime Database is created in your Firebase Console " +
+    "(Firebase Console → Realtime Database → Create database).";
+}
+
+// ── BUTTON LOADING ────────────────────────────────────────────────────
 function setBtnLoading(id, loading) {
   const btn = document.getElementById(id);
   if (!btn) return;
   btn.disabled = loading;
   if (loading) {
-    btn._originalText = btn.innerHTML;
-    btn.innerHTML = '<span style="display:inline-flex;align-items:center;gap:8px">'
-      + '<span style="width:15px;height:15px;border:2px solid rgba(255,255,255,.4);'
-      + 'border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;'
-      + 'display:inline-block"></span>Please wait…</span>';
+    btn._orig = btn.innerHTML;
+    btn.innerHTML =
+      '<span style="display:inline-flex;align-items:center;gap:8px">' +
+      '<span style="width:15px;height:15px;border:2px solid rgba(255,255,255,.35);' +
+      'border-top-color:#fff;border-radius:50%;display:inline-block;' +
+      'animation:spin .7s linear infinite"></span>Please wait…</span>';
   } else {
-    if (btn._originalText) btn.innerHTML = btn._originalText;
+    if (btn._orig) btn.innerHTML = btn._orig;
   }
 }
 
-// ── USER BAR ─────────────────────────────────────────────────────────
+// ── USER BAR ──────────────────────────────────────────────────────────
 function initUserBar() {
   const p        = AppState.userProfile;
   const nameEl   = document.getElementById("my-username-bar");
@@ -334,7 +292,6 @@ function initUserBar() {
   renderAvatar(avatarEl, p);
   setStatusDot(dotEl, p.status || "Online");
 
-  // Keep user bar live as profile changes
   db.ref("users/" + p.uid).on("value", snap => {
     if (!snap.exists()) return;
     const u = snap.val();
@@ -348,8 +305,8 @@ function initUserBar() {
 
 function setStatusDot(dotEl, status) {
   dotEl.className = "status-dot";
-  if (status === "Online")              dotEl.classList.add("online");
-  else if (status === "Idle")           dotEl.classList.add("idle");
-  else if (status === "Do Not Disturb") dotEl.classList.add("dnd");
-  else                                  dotEl.classList.add("offline");
+  if      (status === "Online")           dotEl.classList.add("online");
+  else if (status === "Idle")             dotEl.classList.add("idle");
+  else if (status === "Do Not Disturb")   dotEl.classList.add("dnd");
+  else                                    dotEl.classList.add("offline");
 }
