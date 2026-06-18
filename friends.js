@@ -1,7 +1,10 @@
-// friends.js — friends list, requests, DM list, user search
+// friends.js — friends, DMs, online users
 
 // ── Open Friends modal ────────────────────────────────────────────────
-document.getElementById("open-friends-btn").addEventListener("click", () => openModal("friends-modal"));
+document.getElementById("open-friends-btn").addEventListener("click", () => {
+  openModal("friends-modal");
+  renderFriendLists();
+});
 
 // ── Add friend by username ────────────────────────────────────────────
 document.getElementById("add-friend-btn").addEventListener("click", addFriendByUsername);
@@ -10,180 +13,194 @@ document.getElementById("add-friend-input").addEventListener("keydown", e => {
 });
 
 async function addFriendByUsername() {
-  const input     = document.getElementById("add-friend-input");
-  const statusEl  = document.getElementById("add-friend-status");
-  const username  = input.value.trim();
+  const input    = document.getElementById("add-friend-input");
+  const statusEl = document.getElementById("add-friend-status");
+  const username = input.value.trim();
   statusEl.textContent = "";
   if (!username) return;
 
-  const safeKey = slugify(username);
-  const snap = await db.ref(`usernames/${safeKey}`).get();
-  if (!snap.exists()) { statusEl.textContent = "User not found."; statusEl.style.color = "#f38888"; return; }
+  const slug = slugify(username);
+  const snap = await db.ref("usernames/" + slug).get();
+  if (!snap.exists()) {
+    statusEl.style.color = "#f38888";
+    statusEl.textContent = "No user found with that username.";
+    return;
+  }
 
   const targetUid = snap.val();
   if (targetUid === AppState.currentUser.uid) {
-    statusEl.textContent = "You can't add yourself!"; statusEl.style.color = "#f38888"; return;
+    statusEl.style.color = "#f38888";
+    statusEl.textContent = "You can't add yourself!";
+    return;
   }
 
-  // Already friends?
-  const fSnap = await db.ref(`friends/${AppState.currentUser.uid}/${targetUid}`).get();
-  if (fSnap.exists()) { statusEl.textContent = "Already friends!"; statusEl.style.color = "#23a55a"; return; }
+  const already = (await db.ref("friends/" + AppState.currentUser.uid + "/" + targetUid).get()).exists();
+  if (already) {
+    statusEl.style.color = "#23a55a";
+    statusEl.textContent = "You're already friends!";
+    return;
+  }
+
+  const sent = (await db.ref("friendRequests/" + targetUid + "/" + AppState.currentUser.uid).get()).exists();
+  if (sent) {
+    statusEl.style.color = "#f0b232";
+    statusEl.textContent = "Request already sent.";
+    return;
+  }
 
   await sendFriendRequest(targetUid);
-  statusEl.textContent = "Friend request sent!";
   statusEl.style.color = "#23a55a";
+  statusEl.textContent = "Friend request sent!";
   input.value = "";
 }
 
+// ── Send / accept / decline / remove ─────────────────────────────────
 async function sendFriendRequest(targetUid) {
   const myUid = AppState.currentUser.uid;
-  await db.ref(`friendRequests/${targetUid}/${myUid}`).set(true);
-  // Notification
-  await db.ref(`notifications/${targetUid}/friendRequests/${myUid}`).set({
+  await db.ref("friendRequests/" + targetUid + "/" + myUid).set(true);
+  await db.ref("notifications/" + targetUid + "/friendRequests/" + myUid).set({
     from: myUid, timestamp: Date.now(), type: "friendRequest"
   });
 }
 
-// ── Accept / Decline ──────────────────────────────────────────────────
 async function acceptFriendRequest(senderUid) {
   const myUid = AppState.currentUser.uid;
-  const updates = {};
-  updates[`friends/${myUid}/${senderUid}`]   = true;
-  updates[`friends/${senderUid}/${myUid}`]   = true;
-  updates[`friendRequests/${myUid}/${senderUid}`] = null;
-  updates[`notifications/${myUid}/friendRequests/${senderUid}`] = null;
-  await db.ref().update(updates);
+  await db.ref().update({
+    ["friends/" + myUid + "/" + senderUid]: true,
+    ["friends/" + senderUid + "/" + myUid]: true,
+    ["friendRequests/" + myUid + "/" + senderUid]: null,
+    ["notifications/" + myUid + "/friendRequests/" + senderUid]: null,
+  });
   showToast("Friend added! 🎉", "success");
   renderFriendLists();
+  // DM list updates automatically via its live listener
 }
 
 async function declineFriendRequest(senderUid) {
   const myUid = AppState.currentUser.uid;
-  await db.ref(`friendRequests/${myUid}/${senderUid}`).remove();
-  await db.ref(`notifications/${myUid}/friendRequests/${senderUid}`).remove();
+  await db.ref("friendRequests/" + myUid + "/" + senderUid).remove();
+  await db.ref("notifications/" + myUid + "/friendRequests/" + senderUid).remove();
   renderFriendLists();
 }
 
 async function removeFriend(targetUid) {
   const myUid = AppState.currentUser.uid;
-  await db.ref(`friends/${myUid}/${targetUid}`).remove();
-  await db.ref(`friends/${targetUid}/${myUid}`).remove();
+  await db.ref().update({
+    ["friends/" + myUid + "/" + targetUid]: null,
+    ["friends/" + targetUid + "/" + myUid]: null,
+  });
   showToast("Friend removed.");
   renderFriendLists();
-  renderDMList();
 }
 
-// ── Render friend lists in modal ──────────────────────────────────────
+// ── Render friends modal ──────────────────────────────────────────────
 async function renderFriendLists() {
-  const myUid = AppState.currentUser.uid;
+  const myUid      = AppState.currentUser.uid;
+  const allEl      = document.getElementById("friends-list-all");
+  const incomingEl = document.getElementById("friends-incoming");
+  const outgoingEl = document.getElementById("friends-outgoing");
 
-  // All friends
-  const allEl       = document.getElementById("friends-list-all");
-  const incomingEl  = document.getElementById("friends-incoming");
-  const outgoingEl  = document.getElementById("friends-outgoing");
+  allEl.innerHTML = "<div class='empty-state'>Loading…</div>";
 
-  allEl.innerHTML = "<p style='color:var(--text-muted);padding:8px'>Loading…</p>";
-
-  const [friendsSnap, incomingSnap, outgoingSnap] = await Promise.all([
-    db.ref(`friends/${myUid}`).get(),
-    db.ref(`friendRequests/${myUid}`).get(),
-    db.ref("friendRequests").get(),
+  const [friendsSnap, incomingSnap] = await Promise.all([
+    db.ref("friends/" + myUid).get(),
+    db.ref("friendRequests/" + myUid).get(),
   ]);
 
-  // Friends
+  // ── All friends ──
   allEl.innerHTML = "";
   if (!friendsSnap.exists()) {
-    allEl.innerHTML = "<p style='color:var(--text-muted);padding:8px'>No friends yet. Add someone!</p>";
+    allEl.innerHTML = "<div class='empty-state'>No friends yet — add someone!</div>";
   } else {
-    const uids = Object.keys(friendsSnap.val());
-    for (const uid of uids) {
-      const profile = await fetchProfile(uid);
-      if (!profile) continue;
-      const item = buildFriendItem(profile, [
-        { label: "Message", action: () => { closeModal("friends-modal"); openDM(uid, profile); } },
-        { label: "Remove Friend", danger: true, action: () => removeFriend(uid) },
-      ]);
-      allEl.appendChild(item);
+    for (const uid of Object.keys(friendsSnap.val())) {
+      const p = await fetchProfile(uid);
+      if (!p) continue;
+      allEl.appendChild(buildFriendRow(p, [
+        { label: "Message", action: () => { closeModal("friends-modal"); openDM(uid, p); } },
+        { label: "Remove", danger: true, action: () => removeFriend(uid) },
+      ]));
     }
   }
 
-  // Incoming requests
+  // ── Incoming ──
   incomingEl.innerHTML = "";
-  if (incomingSnap.exists()) {
-    for (const senderUid of Object.keys(incomingSnap.val())) {
-      const profile = await fetchProfile(senderUid);
-      if (!profile) continue;
-      const item = buildFriendItem(profile, [
-        { label: "Accept", action: () => acceptFriendRequest(senderUid) },
-        { label: "Decline", danger: true, action: () => declineFriendRequest(senderUid) },
-      ]);
-      incomingEl.appendChild(item);
-    }
+  if (!incomingSnap.exists()) {
+    incomingEl.innerHTML = "<div class='empty-state'>No incoming requests.</div>";
   } else {
-    incomingEl.innerHTML = "<p style='color:var(--text-muted);padding:8px'>No incoming requests.</p>";
+    for (const senderUid of Object.keys(incomingSnap.val())) {
+      const p = await fetchProfile(senderUid);
+      if (!p) continue;
+      incomingEl.appendChild(buildFriendRow(p, [
+        { label: "Accept",  action: () => acceptFriendRequest(senderUid) },
+        { label: "Decline", danger: true, action: () => declineFriendRequest(senderUid) },
+      ]));
+    }
   }
 
-  // Outgoing (requests I sent)
+  // ── Outgoing ──
   outgoingEl.innerHTML = "";
-  let foundOutgoing = false;
-  if (outgoingSnap.exists()) {
-    const all = outgoingSnap.val();
-    for (const [targetUid, senders] of Object.entries(all)) {
-      if (senders[myUid]) {
-        foundOutgoing = true;
-        const profile = await fetchProfile(targetUid);
-        if (!profile) continue;
-        const item = buildFriendItem(profile, [
+  const allReqSnap = await db.ref("friendRequests").get();
+  let foundOut = false;
+  if (allReqSnap.exists()) {
+    for (const [targetUid, senders] of Object.entries(allReqSnap.val())) {
+      if (senders && senders[myUid]) {
+        foundOut = true;
+        const p = await fetchProfile(targetUid);
+        if (!p) continue;
+        outgoingEl.appendChild(buildFriendRow(p, [
           { label: "Cancel", danger: true, action: async () => {
-            await db.ref(`friendRequests/${targetUid}/${myUid}`).remove();
+            await db.ref("friendRequests/" + targetUid + "/" + myUid).remove();
             renderFriendLists();
           }},
-        ]);
-        outgoingEl.appendChild(item);
+        ]));
       }
     }
   }
-  if (!foundOutgoing) outgoingEl.innerHTML = "<p style='color:var(--text-muted);padding:8px'>No outgoing requests.</p>";
+  if (!foundOut) outgoingEl.innerHTML = "<div class='empty-state'>No outgoing requests.</div>";
 }
 
-function buildFriendItem(profile, actions) {
-  const div = document.createElement("div");
-  div.className = "dm-item";
-  div.style.cssText = "padding:8px;border-radius:8px;display:flex;align-items:center;gap:10px;";
+function buildFriendRow(profile, actions) {
+  const row = document.createElement("div");
+  row.className = "dm-item";
+  row.style.cssText = "padding:10px;border-radius:8px;margin-bottom:4px;";
 
-  const avatarDiv = document.createElement("div");
-  avatarDiv.className = "dm-avatar";
-  renderAvatar(avatarDiv, profile);
+  const av = document.createElement("div");
+  av.className = "dm-avatar";
+  renderAvatar(av, profile);
 
-  const nameDiv = document.createElement("div");
-  nameDiv.style.flex = "1";
-  nameDiv.innerHTML = `<div class="dm-name">${escapeHtml(profile.username)}</div>
-    <div class="dm-preview" style="color:var(--text-muted);font-size:12px">${profile.status || "Offline"}</div>`;
+  // Status dot
+  const dot = document.createElement("span");
+  dot.className = "status-dot " + statusClass(profile.status || "Offline");
+  dot.style.cssText = "position:absolute;bottom:-1px;right:-1px;border-color:var(--bg-secondary);";
+  av.appendChild(dot);
 
-  div.appendChild(avatarDiv);
-  div.appendChild(nameDiv);
+  const info = document.createElement("div");
+  info.style.flex = "1";
+  info.innerHTML =
+    "<div class='dm-name'>" + escapeHtml(profile.username) + "</div>" +
+    "<div class='dm-preview'>" + escapeHtml(profile.status || "Offline") + "</div>";
 
+  row.appendChild(av);
+  row.appendChild(info);
   actions.forEach(a => {
     const btn = document.createElement("button");
     btn.className = a.danger ? "btn-danger" : "btn-primary";
-    btn.style.cssText = "font-size:12px;padding:5px 10px;flex-shrink:0;";
+    btn.style.cssText = "font-size:12px;padding:6px 12px;flex-shrink:0;margin-left:6px;";
     btn.textContent = a.label;
-    btn.onclick = (e) => { e.stopPropagation(); a.action(); };
-    div.appendChild(btn);
+    btn.onclick = e => { e.stopPropagation(); a.action(); };
+    row.appendChild(btn);
   });
-
-  return div;
+  return row;
 }
 
-// Listen to incoming friend requests and re-render pending badge
+// ── Incoming request badge ────────────────────────────────────────────
 function listenFriendRequests() {
   const myUid = AppState.currentUser.uid;
-  db.ref(`friendRequests/${myUid}`).on("value", snap => {
+  db.ref("friendRequests/" + myUid).on("value", snap => {
     const count = snap.exists() ? Object.keys(snap.val()).length : 0;
-    // Update friends label badge
     const label = document.getElementById("open-friends-btn");
-    const existing = label.querySelector(".dm-unread");
-    if (existing) existing.remove();
+    const old = label.querySelector(".dm-unread");
+    if (old) old.remove();
     if (count > 0) {
       const badge = document.createElement("span");
       badge.className = "dm-unread";
@@ -193,20 +210,25 @@ function listenFriendRequests() {
   });
 }
 
-// ── DM List (sidebar) ─────────────────────────────────────────────────
+// ── DM sidebar — live listener on friends ─────────────────────────────
+function initDMList() {
+  const myUid = AppState.currentUser.uid;
+  // Re-render whenever our friends list changes
+  db.ref("friends/" + myUid).on("value", () => renderDMList());
+}
+
 async function renderDMList() {
   const myUid  = AppState.currentUser.uid;
   const listEl = document.getElementById("dm-list");
   listEl.innerHTML = "";
 
-  const snap = await db.ref(`friends/${myUid}`).get();
+  const snap = await db.ref("friends/" + myUid).get();
   if (!snap.exists()) {
-    listEl.innerHTML = "<p style='color:var(--text-muted);padding:8px 16px;font-size:13px'>Add some friends to start chatting!</p>";
+    listEl.innerHTML = "<div class='empty-state'>Add some friends to start chatting!</div>";
     return;
   }
 
-  const friendUids = Object.keys(snap.val());
-  for (const uid of friendUids) {
+  for (const uid of Object.keys(snap.val())) {
     const profile = await fetchProfile(uid);
     if (!profile) continue;
     const chatId = buildChatId(myUid, uid);
@@ -215,93 +237,83 @@ async function renderDMList() {
     item.className = "dm-item";
     item.dataset.uid = uid;
 
-    const avatarDiv = document.createElement("div");
-    avatarDiv.className = "dm-avatar";
-    renderAvatar(avatarDiv, profile);
+    const av = document.createElement("div");
+    av.className = "dm-avatar";
+    renderAvatar(av, profile);
 
-    // Status dot on DM avatar
+    // Online dot
     const dot = document.createElement("span");
-    dot.className = `status-dot ${statusClass(profile.status || "Offline")}`;
+    dot.className = "status-dot " + statusClass(profile.status || "Offline");
     dot.style.cssText = "position:absolute;bottom:-1px;right:-1px;border-color:var(--bg-secondary);";
-    avatarDiv.appendChild(dot);
+    av.appendChild(dot);
 
-    const infoDiv = document.createElement("div");
-    infoDiv.className = "dm-info";
-    infoDiv.innerHTML = `<div class="dm-name">${escapeHtml(profile.username)}</div>
-      <div class="dm-preview" id="dm-preview-${uid}"></div>`;
+    const info = document.createElement("div");
+    info.className = "dm-info";
+    info.innerHTML =
+      "<div class='dm-name'>" + escapeHtml(profile.username) + "</div>" +
+      "<div class='dm-preview' id='dm-preview-" + uid + "'></div>";
 
-    item.appendChild(avatarDiv);
-    item.appendChild(infoDiv);
-    item.addEventListener("click", () => openDM(uid, profile));
-
-    // Unread badge (live)
     const badge = document.createElement("span");
     badge.className = "dm-unread hidden";
-    badge.id = `dm-badge-${uid}`;
+    badge.id = "dm-badge-" + uid;
+
+    item.appendChild(av);
+    item.appendChild(info);
     item.appendChild(badge);
+    item.addEventListener("click", () => openDM(uid, profile));
 
     listEl.appendChild(item);
 
-    // Live last message preview
-    db.ref(`dms/${chatId}`).orderByChild("timestamp").limitToLast(1).on("value", snap => {
-      if (!snap.exists()) return;
-      const msg = Object.values(snap.val())[0];
-      const preview = document.getElementById(`dm-preview-${uid}`);
-      if (preview) preview.textContent = msg.text ? msg.text.substring(0, 30) : "[attachment]";
+    // Live last-message preview
+    db.ref("dms/" + chatId).orderByChild("timestamp").limitToLast(1).on("value", s => {
+      if (!s.exists()) return;
+      const msg     = Object.values(s.val())[0];
+      const preview = document.getElementById("dm-preview-" + uid);
+      if (preview) preview.textContent = msg.content ? msg.content.substring(0, 35) : "[attachment]";
     });
   }
 }
 
-// ── Open a DM conversation ────────────────────────────────────────────
+// ── Open DM ───────────────────────────────────────────────────────────
 function openDM(targetUid, profile) {
   AppState.activeServer  = null;
   AppState.activeChannel = null;
   AppState.activeDM      = { chatId: buildChatId(AppState.currentUser.uid, targetUid), otherUid: targetUid };
 
-  // Reset sidebar highlights
-  document.querySelectorAll(".dm-item").forEach(el => {
-    el.classList.toggle("active", el.dataset.uid === targetUid);
-  });
-  document.querySelectorAll(".rail-icon").forEach(el => el.classList.remove("active"));
+  document.querySelectorAll(".dm-item").forEach(el =>
+    el.classList.toggle("active", el.dataset.uid === targetUid));
+  document.querySelectorAll(".rail-icon-wrap").forEach(el => el.classList.remove("active"));
   document.getElementById("home-btn").classList.add("active");
 
-  // Show DM panel
   document.getElementById("dm-panel").classList.add("active");
   document.getElementById("server-panel").classList.remove("active");
 
-  // Update chat header
   document.getElementById("chat-channel-name").textContent = profile.username;
-  const hashEl = document.querySelector(".channel-hash");
-  hashEl.textContent = "@";
-  document.getElementById("message-input").placeholder = `Message @${profile.username}`;
-
-  // Hide member sidebar in DMs
+  document.querySelector(".channel-hash").textContent = "@";
+  document.getElementById("message-input").placeholder = "Message " + profile.username;
   document.getElementById("member-sidebar").style.display = "none";
 
-  // Show chat view
   document.getElementById("welcome-view").classList.remove("active");
   document.getElementById("chat-view").classList.add("active");
 
-  // Load messages
   loadMessages("dm");
 }
 
-// ── Search ────────────────────────────────────────────────────────────
-document.getElementById("search-input").addEventListener("input", function() {
+// ── Search DM list ────────────────────────────────────────────────────
+document.getElementById("search-input").addEventListener("input", function () {
   const q = this.value.toLowerCase();
-  document.querySelectorAll(".dm-item").forEach(item => {
-    const name = item.querySelector(".dm-name").textContent.toLowerCase();
-    item.style.display = name.includes(q) ? "" : "none";
+  document.querySelectorAll("#dm-list .dm-item").forEach(item => {
+    const name = item.querySelector(".dm-name");
+    item.style.display = (!q || (name && name.textContent.toLowerCase().includes(q))) ? "" : "none";
   });
 });
 
-// ── Initialise friends subsystem ──────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────
 function initFriends() {
-  renderDMList();
+  initDMList();
   listenFriendRequests();
 
-  // Re-render when friends modal is opened
-  document.getElementById("open-friends-btn").addEventListener("click", renderFriendLists);
+  // Tab click listeners
   document.querySelector('[data-tab="friends-all"]').addEventListener("click", renderFriendLists);
   document.querySelector('[data-tab="friends-pending"]').addEventListener("click", renderFriendLists);
 
@@ -312,7 +324,7 @@ function initFriends() {
     AppState.activeDM      = null;
     AppState.clearListeners();
 
-    document.querySelectorAll(".rail-icon").forEach(e => e.classList.remove("active"));
+    document.querySelectorAll(".rail-icon-wrap").forEach(el => el.classList.remove("active"));
     document.getElementById("home-btn").classList.add("active");
     document.getElementById("dm-panel").classList.add("active");
     document.getElementById("server-panel").classList.remove("active");
@@ -321,6 +333,5 @@ function initFriends() {
     document.getElementById("welcome-view").classList.add("active");
   });
 
-  // Welcome button
   document.getElementById("welcome-add-server").addEventListener("click", () => openModal("server-modal"));
 }

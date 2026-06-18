@@ -36,7 +36,17 @@ AppState.clearListeners   = function() {
   this._listeners = [];
 };
 
-// ── Utility helpers ──────────────────────────────────────────────────
+// ── Slug helper (global — used by auth.js, friends.js, settings.js) ──
+function slugify(username) {
+  return username
+    .toLowerCase()
+    .split("")
+    .map(ch => /[a-z0-9]/.test(ch) ? ch : "_" + ch.charCodeAt(0).toString(16))
+    .join("")
+    .substring(0, 60);
+}
+
+// ── Utility helpers ───────────────────────────────────────────────────
 
 /** Show a toast notification */
 function showToast(msg, type = "") {

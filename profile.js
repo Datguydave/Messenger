@@ -1,89 +1,91 @@
-// profile.js — user profile popup
+// profile.js — profile popup
 
 const profilePopup = document.getElementById("profile-popup");
 
-/**
- * Show profile popup for a given UID near an element or coordinates.
- */
 async function showProfile(uid, anchorEl) {
+  // Fetch live profile
   const profile = await fetchProfile(uid);
   if (!profile) return;
 
-  const popup = profilePopup;
-
   // Avatar
-  const avatarEl = document.getElementById("popup-avatar");
-  renderAvatar(avatarEl, profile);
+  renderAvatar(document.getElementById("popup-avatar"), profile);
 
-  // Info
+  // Name
   document.getElementById("popup-username").textContent = profile.username || "Unknown";
-  document.getElementById("popup-about").textContent    = profile.about || "";
 
-  // Status with dot
+  // Status line with coloured dot
+  const st = profile.status || "Offline";
   const statusEl = document.getElementById("popup-status");
-  statusEl.innerHTML = `<span class="status-dot ${statusClass(profile.status)} " style="display:inline-block;margin-right:4px"></span>${profile.status || "Offline"}`;
+  statusEl.innerHTML =
+    "<span class='status-dot " + statusClass(st) + "' " +
+    "style='display:inline-block;width:8px;height:8px;margin-right:5px;" +
+    "border:none;vertical-align:middle'></span>" + escapeHtml(st);
 
-  // Actions
+  // About / bio — show a placeholder if empty
+  const about = (profile.about || "").trim();
+  const aboutEl = document.getElementById("popup-about");
+  aboutEl.textContent = about || "No bio yet.";
+  aboutEl.style.color = about ? "" : "var(--text-faint)";
+  aboutEl.style.fontStyle = about ? "" : "italic";
+
+  // Action buttons
   const actionsEl = document.getElementById("popup-actions");
   actionsEl.innerHTML = "";
   const myUid = AppState.currentUser ? AppState.currentUser.uid : null;
 
   if (myUid && uid !== myUid) {
-    // Check friendship
-    const friendSnap = await db.ref(`friends/${myUid}/${uid}`).get();
-    const isFriend = friendSnap.exists();
+    const isFriend = (await db.ref("friends/" + myUid + "/" + uid).get()).exists();
 
     if (isFriend) {
-      const dmBtn = document.createElement("button");
-      dmBtn.className = "btn-primary";
-      dmBtn.textContent = "Message";
-      dmBtn.onclick = () => { popup.classList.add("hidden"); openDM(uid, profile); };
-      actionsEl.appendChild(dmBtn);
+      const msgBtn = document.createElement("button");
+      msgBtn.className = "btn-primary";
+      msgBtn.textContent = "💬 Message";
+      msgBtn.onclick = () => { profilePopup.classList.add("hidden"); openDM(uid, profile); };
+      actionsEl.appendChild(msgBtn);
 
-      const removeBtn = document.createElement("button");
-      removeBtn.className = "btn-danger";
-      removeBtn.textContent = "Remove Friend";
-      removeBtn.onclick = async () => {
-        await removeFriend(uid);
-        popup.classList.add("hidden");
-      };
-      actionsEl.appendChild(removeBtn);
+      const remBtn = document.createElement("button");
+      remBtn.className = "btn-danger";
+      remBtn.textContent = "Remove Friend";
+      remBtn.onclick = async () => { await removeFriend(uid); profilePopup.classList.add("hidden"); };
+      actionsEl.appendChild(remBtn);
     } else {
-      // Check if request already sent
-      const reqSnap = await db.ref(`friendRequests/${uid}/${myUid}`).get();
-      const btn = document.createElement("button");
-      btn.className = "btn-primary";
-      if (reqSnap.exists()) {
-        btn.textContent = "Request Sent";
-        btn.disabled = true;
+      const reqSent = (await db.ref("friendRequests/" + uid + "/" + myUid).get()).exists();
+      const addBtn  = document.createElement("button");
+      addBtn.className = "btn-primary";
+      if (reqSent) {
+        addBtn.textContent = "Request Sent";
+        addBtn.disabled = true;
       } else {
-        btn.textContent = "Add Friend";
-        btn.onclick = async () => {
+        addBtn.textContent = "➕ Add Friend";
+        addBtn.onclick = async () => {
           await sendFriendRequest(uid);
-          btn.textContent = "Request Sent";
-          btn.disabled = true;
+          addBtn.textContent = "Request Sent";
+          addBtn.disabled = true;
         };
       }
-      actionsEl.appendChild(btn);
+      actionsEl.appendChild(addBtn);
     }
   }
 
-  // Position the popup
+  // Position popup near the anchor element
   const rect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+  profilePopup.style.transform = "";
   if (rect) {
     let top  = rect.top;
-    let left = rect.right + 8;
-    if (left + 290 > window.innerWidth)  left = rect.left - 298;
-    if (top + 300 > window.innerHeight)  top  = window.innerHeight - 310;
-    popup.style.top  = Math.max(8, top) + "px";
-    popup.style.left = Math.max(8, left) + "px";
+    let left = rect.right + 10;
+    if (left + 300 > window.innerWidth)  left = rect.left - 308;
+    if (left < 8)                        left = 8;
+    if (top + 320 > window.innerHeight)  top  = window.innerHeight - 328;
+    if (top < 8)                         top  = 8;
+    profilePopup.style.top  = top  + "px";
+    profilePopup.style.left = left + "px";
   } else {
-    popup.style.top  = "50%";
-    popup.style.left = "50%";
-    popup.style.transform = "translate(-50%,-50%)";
+    profilePopup.style.top       = "50%";
+    profilePopup.style.left      = "50%";
+    profilePopup.style.transform = "translate(-50%,-50%)";
   }
 
-  popup.classList.remove("hidden");
+  profilePopup.classList.remove("hidden");
 }
 
 function statusClass(status) {

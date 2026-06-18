@@ -7,16 +7,7 @@
 // slugify: replaces every non-alphanumeric char with _XX (hex code)
 // so it is safe for Firebase DB keys and email local-parts.
 
-// ── slug helpers ──────────────────────────────────────────────────────
-function slugify(username) {
-  return username
-    .toLowerCase()
-    .split("")
-    .map(ch => /[a-z0-9]/.test(ch) ? ch : "_" + ch.charCodeAt(0).toString(16))
-    .join("")
-    .substring(0, 60); // email local-part limit
-}
-
+// ── email helper (slugify is defined in firebase.js) ─────────────────
 function toEmail(username) {
   return slugify(username) + "@spark.local";
 }
