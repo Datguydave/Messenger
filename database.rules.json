@@ -10,7 +10,7 @@
 
     // ── Username index (read for uniqueness checks, write own) ──────
     "usernames": {
-      ".read":  "auth != null",
+      ".read": true,
       "$username": {
         ".write": "auth != null"
       }
