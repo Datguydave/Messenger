@@ -12,11 +12,12 @@ document.getElementById("add-friend-input").addEventListener("keydown", e => {
 async function addFriendByUsername() {
   const input     = document.getElementById("add-friend-input");
   const statusEl  = document.getElementById("add-friend-status");
-  const username  = input.value.trim().toLowerCase();
+  const username  = input.value.trim();
   statusEl.textContent = "";
   if (!username) return;
 
-  const snap = await db.ref(`usernames/${username}`).get();
+  const safeKey = slugify(username);
+  const snap = await db.ref(`usernames/${safeKey}`).get();
   if (!snap.exists()) { statusEl.textContent = "User not found."; statusEl.style.color = "#f38888"; return; }
 
   const targetUid = snap.val();

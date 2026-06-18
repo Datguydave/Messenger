@@ -77,8 +77,10 @@ async function saveProfile() {
 
   // Check username uniqueness if changed
   const oldUsername = AppState.userProfile.username;
-  if (username !== oldUsername) {
-    const snap = await db.ref(`usernames/${username.toLowerCase()}`).get();
+  const newSlug     = slugify(username);
+  const oldSlug     = slugify(oldUsername);
+  if (newSlug !== oldSlug) {
+    const snap = await db.ref(`usernames/${newSlug}`).get();
     if (snap.exists() && snap.val() !== uid) {
       msgEl.textContent = "That username is taken."; msgEl.style.color="#f38888"; return;
     }
@@ -97,9 +99,10 @@ async function saveProfile() {
   }
 
   // Update username index
-  if (username !== oldUsername) {
-    await db.ref(`usernames/${oldUsername.toLowerCase()}`).remove();
-    await db.ref(`usernames/${username.toLowerCase()}`).set(uid);
+  if (newSlug !== oldSlug) {
+    await db.ref(`usernames/${oldSlug}`).remove();
+    await db.ref(`usernames/${newSlug}`).set(uid);
+    updates.slug = newSlug;
   }
 
   await db.ref(`users/${uid}`).update(updates);
