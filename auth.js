@@ -1,14 +1,18 @@
 // auth.js — sign-up, login, logout, online presence
+// Register uses username + password only.
+// Firebase Auth requires an email, so we synthesise one internally:
+//   <username_lowercase>@spark.internal
+// This is never shown to the user.
 
 // ── UI refs ──────────────────────────────────────────────────────────
-const authScreen   = document.getElementById("auth-screen");
-const appEl        = document.getElementById("app");
-const loginView    = document.getElementById("login-view");
-const registerView = document.getElementById("register-view");
-const loginError   = document.getElementById("login-error");
-const registerError= document.getElementById("register-error");
+const authScreen    = document.getElementById("auth-screen");
+const appEl         = document.getElementById("app");
+const loginView     = document.getElementById("login-view");
+const registerView  = document.getElementById("register-view");
+const loginError    = document.getElementById("login-error");
+const registerError = document.getElementById("register-error");
 
-// ── Toggle views ────────────────────────────────────────────────────
+// ── Toggle views ─────────────────────────────────────────────────────
 document.getElementById("go-register").addEventListener("click", e => {
   e.preventDefault();
   loginView.classList.remove("active");
@@ -22,39 +26,48 @@ document.getElementById("go-login").addEventListener("click", e => {
   registerError.textContent = "";
 });
 
-// ── Avatar file label ────────────────────────────────────────────────
+// ── Avatar file label ─────────────────────────────────────────────────
 document.getElementById("reg-avatar").addEventListener("change", function() {
   document.getElementById("reg-avatar-name").textContent =
     this.files[0] ? this.files[0].name : "No file chosen";
 });
 
-// ── Register ─────────────────────────────────────────────────────────
+// ── Internal email helper ─────────────────────────────────────────────
+function usernameToEmail(username) {
+  return `${username.trim().toLowerCase()}@spark.internal`;
+}
+
+// ── Register ──────────────────────────────────────────────────────────
 document.getElementById("register-btn").addEventListener("click", async () => {
-  const email    = document.getElementById("reg-email").value.trim();
-  const username = document.getElementById("reg-username").value.trim();
-  const password = document.getElementById("reg-password").value;
+  const username   = document.getElementById("reg-username").value.trim();
+  const password   = document.getElementById("reg-password").value;
   const avatarFile = document.getElementById("reg-avatar").files[0];
 
   registerError.textContent = "";
 
-  if (!email || !username || !password) {
-    registerError.textContent = "Please fill in all required fields."; return;
+  if (!username || !password) {
+    registerError.textContent = "Please fill in all fields."; return;
   }
   if (username.length < 2) {
     registerError.textContent = "Username must be at least 2 characters."; return;
+  }
+  if (!/^[a-zA-Z0-9_.\-]+$/.test(username)) {
+    registerError.textContent = "Username can only contain letters, numbers, _, . and -."; return;
   }
   if (password.length < 6) {
     registerError.textContent = "Password must be at least 6 characters."; return;
   }
 
   // Check username uniqueness
-  const snap = await db.ref("usernames").child(username.toLowerCase()).get();
+  const snap = await db.ref(`usernames/${username.toLowerCase()}`).get();
   if (snap.exists()) {
     registerError.textContent = "That username is already taken."; return;
   }
 
+  const fakeEmail = usernameToEmail(username);
+
   try {
-    const cred = await auth.createUserWithEmailAndPassword(email, password);
+    const cred = await auth.createUserWithEmailAndPassword(fakeEmail, password);
     const uid  = cred.user.uid;
 
     let avatarUrl = "";
@@ -64,7 +77,8 @@ document.getElementById("register-btn").addEventListener("click", async () => {
     }
 
     const profile = {
-      uid, username, email,
+      uid,
+      username,
       avatar:    avatarUrl,
       about:     "",
       status:    "Online",
@@ -82,25 +96,39 @@ document.getElementById("register-btn").addEventListener("click", async () => {
 
 // ── Login ─────────────────────────────────────────────────────────────
 document.getElementById("login-btn").addEventListener("click", async () => {
-  const email    = document.getElementById("login-email").value.trim();
+  const username = document.getElementById("login-username").value.trim();
   const password = document.getElementById("login-password").value;
   loginError.textContent = "";
 
-  if (!email || !password) { loginError.textContent = "Please enter email and password."; return; }
+  if (!username || !password) {
+    loginError.textContent = "Please enter your username and password."; return;
+  }
+
+  // Look up uid from username → derive the internal email
+  const snap = await db.ref(`usernames/${username.toLowerCase()}`).get();
+  if (!snap.exists()) {
+    loginError.textContent = "No account found with that username."; return;
+  }
+
+  const fakeEmail = usernameToEmail(username);
 
   try {
-    await auth.signInWithEmailAndPassword(email, password);
+    await auth.signInWithEmailAndPassword(fakeEmail, password);
   } catch(err) {
     loginError.textContent = friendlyAuthError(err.code);
   }
 });
 
-// Enter key on login/register
-["login-email","login-password"].forEach(id =>
-  document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("login-btn").click(); })
+// Enter key helpers
+["login-username", "login-password"].forEach(id =>
+  document.getElementById(id).addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("login-btn").click();
+  })
 );
-["reg-email","reg-username","reg-password"].forEach(id =>
-  document.getElementById(id).addEventListener("keydown", e => { if (e.key === "Enter") document.getElementById("register-btn").click(); })
+["reg-username", "reg-password"].forEach(id =>
+  document.getElementById(id).addEventListener("keydown", e => {
+    if (e.key === "Enter") document.getElementById("register-btn").click();
+  })
 );
 
 // ── Logout ────────────────────────────────────────────────────────────
@@ -113,18 +141,18 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   await auth.signOut();
 });
 
-// ── Auth state observer ──────────────────────────────────────────────
+// ── Auth state observer ───────────────────────────────────────────────
 auth.onAuthStateChanged(async user => {
   if (user) {
     AppState.currentUser = user;
 
-    // Fetch / create profile
     let profile = await fetchProfile(user.uid);
     if (!profile) {
+      // Fallback: derive username from internal email
+      const derivedUsername = user.email.replace("@spark.internal", "");
       profile = {
         uid: user.uid,
-        username: user.email.split("@")[0],
-        email: user.email,
+        username: derivedUsername,
         avatar: "", about: "", status: "Online", online: true,
         createdAt: Date.now(),
       };
@@ -132,14 +160,11 @@ auth.onAuthStateChanged(async user => {
     }
     AppState.userProfile = profile;
 
-    // Presence system
     setupPresence(user.uid);
 
-    // Show app
     authScreen.classList.add("hidden");
     appEl.classList.remove("hidden");
 
-    // Boot subsystems
     initUserBar();
     initNotifications();
     initFriends();
@@ -168,31 +193,30 @@ function setupPresence(uid) {
     db.ref(`users/${uid}/online`).set(true);
   });
 
-  // Update user status on page close
   window.addEventListener("beforeunload", () => {
     presenceRef.remove();
     db.ref(`users/${uid}/online`).set(false);
   });
 }
 
-// ── Error codes → friendly messages ─────────────────────────────────
+// ── Friendly error messages ───────────────────────────────────────────
 function friendlyAuthError(code) {
   const map = {
-    "auth/email-already-in-use":    "That email is already registered.",
-    "auth/invalid-email":           "Please enter a valid email address.",
-    "auth/weak-password":           "Password must be at least 6 characters.",
-    "auth/user-not-found":          "No account found with that email.",
-    "auth/wrong-password":          "Incorrect password.",
-    "auth/too-many-requests":       "Too many attempts. Please try again later.",
-    "auth/network-request-failed":  "Network error. Check your connection.",
+    "auth/email-already-in-use":   "That username is already registered.",
+    "auth/weak-password":          "Password must be at least 6 characters.",
+    "auth/user-not-found":         "No account found with that username.",
+    "auth/wrong-password":         "Incorrect password.",
+    "auth/invalid-credential":     "Incorrect password.",
+    "auth/too-many-requests":      "Too many attempts. Please try again later.",
+    "auth/network-request-failed": "Network error. Check your connection.",
   };
   return map[code] || "Something went wrong. Please try again.";
 }
 
 // ── User bar ──────────────────────────────────────────────────────────
 function initUserBar() {
-  const p = AppState.userProfile;
-  const nameEl   = document.getElementById("my-username-bar");
+  const p      = AppState.userProfile;
+  const nameEl = document.getElementById("my-username-bar");
   const statusEl = document.getElementById("my-status-bar");
   const avatarEl = document.getElementById("my-avatar-bar");
   const dotEl    = document.getElementById("my-status-dot");
@@ -200,17 +224,14 @@ function initUserBar() {
   nameEl.textContent   = p.username;
   statusEl.textContent = p.status || "Online";
   renderAvatar(avatarEl, p);
+  setStatusDot(dotEl, p.status || "Online");
 
-  const dot = document.getElementById("my-status-dot");
-  setStatusDot(dot, p.status || "Online");
-
-  // Live updates to own profile
   db.ref(`users/${p.uid}`).on("value", snap => {
     if (!snap.exists()) return;
     const updated = snap.val();
-    AppState.userProfile = updated;
-    nameEl.textContent   = updated.username;
-    statusEl.textContent = updated.status || "Online";
+    AppState.userProfile     = updated;
+    nameEl.textContent       = updated.username;
+    statusEl.textContent     = updated.status || "Online";
     renderAvatar(avatarEl, updated);
     setStatusDot(dotEl, updated.status || "Online");
   });
@@ -218,8 +239,8 @@ function initUserBar() {
 
 function setStatusDot(dotEl, status) {
   dotEl.className = "status-dot";
-  if (status === "Online")          dotEl.classList.add("online");
-  else if (status === "Idle")       dotEl.classList.add("idle");
+  if (status === "Online")            dotEl.classList.add("online");
+  else if (status === "Idle")         dotEl.classList.add("idle");
   else if (status === "Do Not Disturb") dotEl.classList.add("dnd");
-  else                              dotEl.classList.add("offline");
+  else                                dotEl.classList.add("offline");
 }

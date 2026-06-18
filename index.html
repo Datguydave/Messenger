@@ -22,8 +22,8 @@
       <h2>Welcome back!</h2>
       <p class="auth-sub">We're so excited to see you again!</p>
       <div class="form-group">
-        <label>EMAIL</label>
-        <input id="login-email" type="email" placeholder="Enter your email" autocomplete="email" />
+        <label>USERNAME</label>
+        <input id="login-username" type="text" placeholder="Enter your username" autocomplete="username" />
       </div>
       <div class="form-group">
         <label>PASSWORD</label>
@@ -38,12 +38,8 @@
     <div id="register-view" class="auth-view">
       <h2>Create an account</h2>
       <div class="form-group">
-        <label>EMAIL</label>
-        <input id="reg-email" type="email" placeholder="Enter your email" autocomplete="email" />
-      </div>
-      <div class="form-group">
         <label>USERNAME</label>
-        <input id="reg-username" type="text" placeholder="Choose a username" maxlength="32" />
+        <input id="reg-username" type="text" placeholder="Choose a username" maxlength="32" autocomplete="username" />
       </div>
       <div class="form-group">
         <label>PASSWORD</label>
@@ -56,7 +52,7 @@
         <span id="reg-avatar-name" class="file-name">No file chosen</span>
       </div>
       <div id="register-error" class="auth-error"></div>
-      <button id="register-btn" class="btn-primary full-width">Continue</button>
+      <button id="register-btn" class="btn-primary full-width">Create Account</button>
       <p class="auth-switch">Already have an account? <a href="#" id="go-login">Log in</a></p>
     </div>
   </div>
