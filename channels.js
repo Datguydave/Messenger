@@ -1,13 +1,13 @@
 // channels.js — channel list, create, delete, select
 
-// ── Open create channel modal ─────────────────────────────────────────
+// Module-level ref so we detach it independently of the message listener
+let _channelsRef = null;
+
+// ── Create channel modal ──────────────────────────────────────────────
 document.getElementById("create-channel-btn").addEventListener("click", async () => {
   if (!AppState.activeServer) { showToast("Select a server first.", "error"); return; }
-
-  // Only owner/admin/mod can create channels
-  const { id } = AppState.activeServer;
-  const myUid  = AppState.currentUser.uid;
-  const role   = (await db.ref(`serverMembers/${id}/${myUid}`).get()).val();
+  const myUid = AppState.currentUser.uid;
+  const role  = (await db.ref("serverMembers/" + AppState.activeServer.id + "/" + myUid).get()).val();
   if (!["owner","admin","moderator"].includes(role)) {
     showToast("You don't have permission to create channels.", "error"); return;
   }
@@ -15,43 +15,40 @@ document.getElementById("create-channel-btn").addEventListener("click", async ()
 });
 
 document.getElementById("create-channel-confirm-btn").addEventListener("click", async () => {
-  const name  = document.getElementById("channel-name-input").value.trim().toLowerCase().replace(/\s+/g, "-");
-  const type  = document.querySelector('input[name="ch-type"]:checked').value;
+  const raw   = document.getElementById("channel-name-input").value.trim();
+  const name  = raw.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+  const type  = document.querySelector("input[name='ch-type']:checked").value;
   const errEl = document.getElementById("channel-modal-error");
   errEl.textContent = "";
-
   if (!name) { errEl.textContent = "Please enter a channel name."; return; }
-  if (!/^[a-z0-9\-]+$/.test(name)) { errEl.textContent = "Only lowercase letters, numbers, and hyphens."; return; }
 
   const { id } = AppState.activeServer;
-  const ref = db.ref(`channels/${id}`).push();
+  const ref = db.ref("channels/" + id).push();
   await ref.set({ name, type, createdAt: Date.now() });
 
   closeModal("channel-modal");
   document.getElementById("channel-name-input").value = "";
-  showToast(`#${name} created!`, "success");
+  showToast("#" + name + " created!", "success");
 });
 
-// ── Load channels for a server ────────────────────────────────────────
+// ── Load channels (live) ──────────────────────────────────────────────
 function loadChannels(sid) {
-  // Detach previous listener if any
-  const off = () => db.ref(`channels/${sid}`).off();
-  AppState.registerListener(off);
+  // Detach any previous channel listener
+  if (_channelsRef) _channelsRef.off();
+  _channelsRef = db.ref("channels/" + sid);
 
-  db.ref(`channels/${sid}`).on("value", snap => {
+  _channelsRef.on("value", snap => {
     const textList  = document.getElementById("channel-list");
     const voiceList = document.getElementById("voice-channel-list");
     textList.innerHTML  = "";
     voiceList.innerHTML = "";
-
     if (!snap.exists()) return;
 
-    const channels = snap.val();
-    for (const [cid, channel] of Object.entries(channels)) {
+    Object.entries(snap.val()).forEach(([cid, channel]) => {
       const item = buildChannelItem(sid, cid, channel);
       if (channel.type === "voice") voiceList.appendChild(item);
       else                          textList.appendChild(item);
-    }
+    });
   });
 }
 
@@ -64,30 +61,30 @@ function buildChannelItem(sid, cid, channel) {
   prefix.className = "ch-prefix";
   prefix.textContent = channel.type === "voice" ? "🔊" : "#";
 
-  const name = document.createElement("span");
-  name.className = "ch-name";
-  name.textContent = channel.name;
+  const nameEl = document.createElement("span");
+  nameEl.className = "ch-name";
+  nameEl.textContent = channel.name;
 
-  item.appendChild(prefix);
-  item.appendChild(name);
-
-  // Unread badge
+  // Unread badge (populated by notifications.js)
   const badge = document.createElement("span");
   badge.className = "dm-unread hidden";
-  badge.id = `ch-badge-${cid}`;
-  item.appendChild(badge);
+  badge.id = "ch-badge-" + cid;
 
-  // Delete button (shown on hover for authorised users)
+  // Delete button
   const delBtn = document.createElement("button");
   delBtn.className = "icon-btn ch-delete danger";
   delBtn.title = "Delete Channel";
   delBtn.innerHTML = "✕";
-  delBtn.style.cssText = "font-size:12px;width:22px;height:22px;";
-  delBtn.addEventListener("click", async (e) => {
+  delBtn.style.cssText = "font-size:11px;width:20px;height:20px;";
+  delBtn.addEventListener("click", async e => {
     e.stopPropagation();
-    if (!confirm(`Delete #${channel.name}?`)) return;
-    await deleteChannel(sid, cid);
+    if (!confirm("Delete #" + channel.name + "?")) return;
+    await deleteChannel(sid, cid, channel.name);
   });
+
+  item.appendChild(prefix);
+  item.appendChild(nameEl);
+  item.appendChild(badge);
   item.appendChild(delBtn);
 
   if (channel.type === "voice") {
@@ -96,33 +93,29 @@ function buildChannelItem(sid, cid, channel) {
     item.addEventListener("click", () => selectChannel(sid, cid, channel));
   }
 
-  // Highlight if active
+  // Keep active highlight in sync
   if (AppState.activeChannel && AppState.activeChannel.id === cid) {
     item.classList.add("active");
   }
-
   return item;
 }
 
-async function deleteChannel(sid, cid) {
+async function deleteChannel(sid, cid, name) {
   const myUid = AppState.currentUser.uid;
-  const role  = (await db.ref(`serverMembers/${sid}/${myUid}`).get()).val();
+  const role  = (await db.ref("serverMembers/" + sid + "/" + myUid).get()).val();
   if (!["owner","admin","moderator"].includes(role)) {
     showToast("No permission.", "error"); return;
   }
-
-  const updates = {};
-  updates[`channels/${sid}/${cid}`] = null;
-  updates[`messages/${sid}/${cid}`] = null;
-  updates[`typing/${sid}/${cid}`]   = null;
-  await db.ref().update(updates);
-
+  await db.ref().update({
+    ["channels/" + sid + "/" + cid]: null,
+    ["messages/" + sid + "/" + cid]: null,
+    ["typing/"   + sid + "/" + cid]: null,
+  });
   if (AppState.activeChannel && AppState.activeChannel.id === cid) {
-    document.getElementById("chat-view").classList.remove("active");
-    document.getElementById("welcome-view").classList.remove("active");
     AppState.activeChannel = null;
+    document.getElementById("chat-view").classList.remove("active");
   }
-  showToast("Channel deleted.");
+  showToast("#" + name + " deleted.");
 }
 
 // ── Select a channel ──────────────────────────────────────────────────
@@ -130,23 +123,20 @@ function selectChannel(sid, cid, channel) {
   AppState.activeChannel = { id: cid, data: channel };
   AppState.activeDM      = null;
 
-  // Highlight
-  document.querySelectorAll(".channel-item").forEach(el => {
-    el.classList.toggle("active", el.dataset.cid === cid);
-  });
+  document.querySelectorAll(".channel-item").forEach(el =>
+    el.classList.toggle("active", el.dataset.cid === cid));
 
-  // Chat header
   document.getElementById("chat-channel-name").textContent = channel.name;
   document.querySelector(".channel-hash").textContent = "#";
-  document.getElementById("message-input").placeholder = `Message #${channel.name}`;
+  document.getElementById("message-input").placeholder = "Message #" + channel.name;
 
-  // Show chat
   document.getElementById("welcome-view").classList.remove("active");
   document.getElementById("chat-view").classList.add("active");
-
-  // Member sidebar
   document.getElementById("member-sidebar").style.display = "";
 
-  // Load messages
+  // Clear unread badge for this channel
+  clearChannelUnread(cid);
+
+  // Load messages via chat.js
   loadMessages("server");
 }

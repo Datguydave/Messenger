@@ -1,45 +1,65 @@
-// notifications.js — unread counts, mention badges, DM notifications
+// notifications.js — live unread badges on channels + server rail
 
 function initNotifications() {
   const myUid = AppState.currentUser.uid;
 
-  // Listen to all notifications for this user
-  db.ref(`notifications/${myUid}`).on("value", snap => {
-    if (!snap.exists()) return;
+  // Listen to ALL notifications for this user in real time
+  db.ref("notifications/" + myUid + "/channels").on("value", snap => {
+    let railTotals = {}; // sid → total unread
+
+    if (!snap.exists()) {
+      clearAllBadges();
+      return;
+    }
+
     const data = snap.val();
 
-    // Channel unread badges
-    if (data.channels) {
-      Object.entries(data.channels).forEach(([cid, info]) => {
-        const badge = document.getElementById(`ch-badge-${cid}`);
-        if (badge) {
-          const count = info.unread || 0;
-          badge.textContent  = count > 99 ? "99+" : count;
-          badge.classList.toggle("hidden", count === 0);
-        }
-      });
-    }
+    Object.entries(data).forEach(([cid, info]) => {
+      const count = info.unread || 0;
+      const sid   = info.sid   || null;
 
-    // Server rail badge (sum of channel unreads)
-    if (AppState.activeServer && data.channels) {
-      const sid    = AppState.activeServer.id;
-      const railBadge = document.getElementById(`rail-badge-${sid}`);
-      if (railBadge) {
-        const total = Object.values(data.channels).reduce((acc, c) => acc + (c.unread || 0), 0);
-        railBadge.textContent = total > 99 ? "99+" : total;
-        railBadge.classList.toggle("hidden", total === 0);
+      // Update channel badge in sidebar
+      setChannelBadge(cid, count);
+
+      // Accumulate for server rail badge
+      if (sid) {
+        railTotals[sid] = (railTotals[sid] || 0) + count;
       }
-    }
+    });
+
+    // Update rail badges
+    Object.entries(railTotals).forEach(([sid, total]) => {
+      setRailBadge(sid, total);
+    });
   });
 
-  // Clear channel unread when user opens it (hook into selectChannel)
-  const _origSelect = window.selectChannel || function(){};
-  window.selectChannel = function(sid, cid, channel) {
-    _origSelect(sid, cid, channel);
-    clearChannelUnread(myUid, cid);
-  };
+  // Patch selectChannel to clear unread when opening a channel
+  // We do this by watching AppState.activeChannel changes via a proxy
+  // Instead: channels.js calls clearChannelUnread directly (see channels.js)
 }
 
-async function clearChannelUnread(uid, cid) {
-  await db.ref(`notifications/${uid}/channels/${cid}/unread`).set(0);
+function setChannelBadge(cid, count) {
+  const badge = document.getElementById("ch-badge-" + cid);
+  if (!badge) return;
+  badge.textContent = count > 99 ? "99+" : count;
+  badge.classList.toggle("hidden", count <= 0);
+}
+
+function setRailBadge(sid, count) {
+  const badge = document.getElementById("rail-badge-" + sid);
+  if (!badge) return;
+  badge.textContent = count > 99 ? "99+" : count;
+  badge.classList.toggle("hidden", count <= 0);
+}
+
+function clearAllBadges() {
+  document.querySelectorAll(".notif-badge").forEach(b => b.classList.add("hidden"));
+  document.querySelectorAll("[id^='ch-badge-']").forEach(b => b.classList.add("hidden"));
+}
+
+// Called from channels.js when user opens a channel
+async function clearChannelUnread(cid) {
+  const myUid = AppState.currentUser.uid;
+  await db.ref("notifications/" + myUid + "/channels/" + cid + "/unread").set(0);
+  setChannelBadge(cid, 0);
 }
