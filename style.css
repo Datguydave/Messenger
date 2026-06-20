@@ -1673,3 +1673,134 @@ textarea {
   cursor: pointer;
   margin-left: 4px;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   GROUP VOICE / VIDEO CHANNELS
+══════════════════════════════════════════════════════════════ */
+
+/* Channel item wrapper (so participant row can sit below it) */
+.channel-item-wrap { position: relative; }
+
+/* Participant avatar strip under a voice channel */
+.voice-participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 9px 8px 32px;
+}
+.voice-participant-avatar {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff;
+  border: 2px solid transparent;
+  transition: border-color var(--t-fast);
+  flex-shrink: 0;
+}
+.voice-participant-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.voice-participant-avatar.speaking {
+  border-color: var(--success);
+  box-shadow: 0 0 0 1px var(--success);
+}
+
+/* ── Persistent voice call panel (bottom-left, above user bar) ── */
+.voice-call-panel {
+  position: fixed;
+  left: 8px;
+  bottom: 64px;
+  width: 224px;
+  background: var(--bg-tertiary);
+  border-radius: var(--r-md);
+  border: 1px solid var(--divider-strong);
+  box-shadow: var(--shadow-lg);
+  z-index: 90;
+  overflow: hidden;
+  animation: slide-up 0.2s var(--ease);
+}
+
+.voice-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px;
+  font-size: 12px; font-weight: 700;
+  color: var(--success);
+  background: var(--success-subtle);
+}
+
+.voice-panel-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.voice-tile {
+  background: var(--bg-primary);
+  border-radius: var(--r-sm);
+  aspect-ratio: 4/3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  transition: box-shadow var(--t-fast);
+}
+.voice-tile.speaking {
+  box-shadow: inset 0 0 0 2px var(--success);
+}
+.voice-tile video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  position: absolute; inset: 0;
+}
+.voice-tile-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--brand);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+  overflow: hidden;
+}
+.voice-tile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.voice-tile-label {
+  position: absolute;
+  bottom: 2px; left: 4px; right: 4px;
+  font-size: 9px; font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.voice-panel-controls {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--divider);
+}
+.call-ctrl-btn.small {
+  width: 36px; height: 36px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+.call-ctrl-btn.small svg { width: 16px; height: 16px; }
+.call-ctrl-btn.small:hover { background: var(--bg-hover); }
+.call-ctrl-btn.small.muted { background: var(--danger); color: #fff; }
+.call-ctrl-btn.small.call-ctrl-end {
+  background: var(--danger) !important;
+  color: #fff;
+}
+.call-ctrl-btn.small.call-ctrl-end svg { transform: rotate(135deg); }
+
+/* Expanded mode — bigger grid, more visible */
+.voice-call-panel.expanded {
+  width: 360px;
+}
+.voice-call-panel.expanded .voice-panel-grid {
+  grid-template-columns: 1fr 1fr 1fr;
+  max-height: 260px;
+}

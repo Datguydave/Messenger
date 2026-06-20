@@ -53,6 +53,10 @@ function loadChannels(sid) {
 }
 
 function buildChannelItem(sid, cid, channel) {
+  const wrap = document.createElement("div");
+  wrap.className = "channel-item-wrap";
+  wrap.dataset.cid = cid;
+
   const item = document.createElement("div");
   item.className = "channel-item";
   item.dataset.cid = cid;
@@ -86,9 +90,20 @@ function buildChannelItem(sid, cid, channel) {
   item.appendChild(nameEl);
   item.appendChild(badge);
   item.appendChild(delBtn);
+  wrap.appendChild(item);
 
   if (channel.type === "voice") {
-    item.addEventListener("click", () => showToast("Voice channels coming soon! 🔊"));
+    item.classList.add("voice-ch");
+    item.addEventListener("click", () => joinVoiceChannel(sid, cid, channel));
+
+    // Live participant avatars under the channel name
+    const participantsRow = document.createElement("div");
+    participantsRow.className = "voice-participants";
+    participantsRow.id = "voice-participants-" + cid;
+    wrap.appendChild(participantsRow);
+
+    // Listen for participant presence on this channel
+    listenVoiceChannelPresence(sid, cid);
   } else {
     item.addEventListener("click", () => selectChannel(sid, cid, channel));
   }
@@ -97,7 +112,7 @@ function buildChannelItem(sid, cid, channel) {
   if (AppState.activeChannel && AppState.activeChannel.id === cid) {
     item.classList.add("active");
   }
-  return item;
+  return wrap;
 }
 
 async function deleteChannel(sid, cid, name) {
@@ -116,6 +131,37 @@ async function deleteChannel(sid, cid, name) {
     document.getElementById("chat-view").classList.remove("active");
   }
   showToast("#" + name + " deleted.");
+}
+
+// ── Voice channel participant presence row ────────────────────────────
+const _voicePresenceRefs = {};
+
+function listenVoiceChannelPresence(sid, cid) {
+  // Avoid duplicate listeners if re-rendered
+  if (_voicePresenceRefs[cid]) _voicePresenceRefs[cid].off();
+  const ref = db.ref("voiceChannels/" + sid + "/" + cid + "/participants");
+  _voicePresenceRefs[cid] = ref;
+
+  ref.on("value", async snap => {
+    const row = document.getElementById("voice-participants-" + cid);
+    if (!row) return;
+    row.innerHTML = "";
+    if (!snap.exists()) return;
+
+    const uids = Object.keys(snap.val());
+    for (const uid of uids) {
+      const profile = await fetchProfile(uid);
+      if (!profile) continue;
+      const av = document.createElement("div");
+      av.className = "voice-participant-avatar";
+      av.title = profile.username;
+      renderAvatar(av, profile);
+      if (typeof isUidSpeaking === "function" && isUidSpeaking(uid)) {
+        av.classList.add("speaking");
+      }
+      row.appendChild(av);
+    }
+  });
 }
 
 // ── Select a channel ──────────────────────────────────────────────────
