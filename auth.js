@@ -191,6 +191,7 @@ auth.onAuthStateChanged(async user => {
     initFriends();
     initServers();
     initSettings();
+    if (typeof initCalling === "function") initCalling();
 
   } else {
     AppState.currentUser = null;
