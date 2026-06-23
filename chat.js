@@ -91,15 +91,18 @@ async function sendMessage() {
 
   if (_pendingAttachment) {
     try {
-      showToast("Uploading…");
-      const chatPath = _chatMode === "dm"
-        ? "dm_" + AppState.activeDM.chatId
-        : "srv_" + AppState.activeServer.id + "_" + AppState.activeChannel.id;
-      const att = await uploadAttachment(_pendingAttachment.file, chatPath);
-      msg.attachmentUrl  = att.url;
+      showToast("Uploading attachment…");
+      const att = await uploadAttachment(_pendingAttachment.file);
+      msg.attachmentUrl  = att.dataUrl;
       msg.attachmentType = att.type;
       msg.attachmentName = att.name;
-    } catch (e) { showToast("Attachment failed.", "error"); }
+    } catch (e) {
+      showToast(e.message || "Attachment failed.", "error");
+      _pendingAttachment = null;
+      document.getElementById("attachment-preview").classList.add("hidden");
+      setBtnLoading && setBtnLoading("send-btn", false);
+      return;
+    }
     _pendingAttachment = null;
     document.getElementById("attachment-preview").classList.add("hidden");
   }
@@ -248,17 +251,20 @@ function buildMessageEl(msg, compact, mode) {
     attDiv.className = "msg-attachment";
     if (msg.attachmentType === "image") {
       const img = document.createElement("img");
-      img.src = msg.attachmentUrl; img.alt = msg.attachmentName || "image";
+      img.src = msg.attachmentUrl;
+      img.alt = msg.attachmentName || "image";
+      img.style.cssText = "max-width:min(400px,100%);max-height:300px;border-radius:8px;cursor:zoom-in;object-fit:contain;";
       attDiv.appendChild(img);
-    } else if (msg.attachmentType === "video") {
-      const vid = document.createElement("video");
-      vid.src = msg.attachmentUrl; vid.controls = true;
-      attDiv.appendChild(vid);
     } else {
+      // For video/pdf/zip/file — offer as a download link (base64 href)
       const a = document.createElement("a");
-      a.href = msg.attachmentUrl; a.target = "_blank";
+      a.href = msg.attachmentUrl;
+      a.download = msg.attachmentName || "file";
       a.className = "attachment-file";
-      a.textContent = "📎 " + (msg.attachmentName || "Download");
+      const icon = msg.attachmentType === "video" ? "🎬"
+                 : msg.attachmentType === "pdf"   ? "📄"
+                 : msg.attachmentType === "zip"   ? "🗜️" : "📎";
+      a.textContent = icon + " " + (msg.attachmentName || "Download");
       attDiv.appendChild(a);
     }
     body.appendChild(attDiv);

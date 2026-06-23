@@ -1689,15 +1689,13 @@ textarea {
    GROUP VOICE / VIDEO CHANNELS
 ══════════════════════════════════════════════════════════════ */
 
-/* Channel item wrapper (so participant row can sit below it) */
+/* Channel item wrapper (participant row sits below) */
 .channel-item-wrap { position: relative; }
 
-/* Participant avatar strip under a voice channel */
+/* Participant avatar strip under each voice channel in sidebar */
 .voice-participants {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 2px 9px 8px 32px;
+  display: flex; flex-wrap: wrap; gap: 4px;
+  padding: 2px 9px 6px 32px;
 }
 .voice-participant-avatar {
   width: 22px; height: 22px;
@@ -1705,113 +1703,149 @@ textarea {
   background: var(--bg-tertiary);
   overflow: hidden;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 700; color: #fff;
+  font-size: 9px; font-weight: 700; color: #fff;
   border: 2px solid transparent;
-  transition: border-color var(--t-fast);
+  transition: border-color 0.15s;
   flex-shrink: 0;
 }
 .voice-participant-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.voice-participant-avatar.speaking {
-  border-color: var(--success);
-  box-shadow: 0 0 0 1px var(--success);
+.voice-participant-avatar.speaking { border-color: var(--success); }
+
+/* ═══════════════════════════════════════════════════════════════
+   DISCORD-STYLE VOICE BAR — fixed top of chat-main
+══════════════════════════════════════════════════════════════ */
+.vc-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  height: 52px;
+  background: #1a1c1e;
+  border-bottom: 2px solid var(--success);
+  flex-shrink: 0;
+  z-index: 20;
+  position: relative;
+  animation: slide-down 0.2s var(--ease);
+}
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: none; }
 }
 
-/* ── Persistent voice call panel (bottom-left, above user bar) ── */
-.voice-call-panel {
-  position: fixed;
-  left: 8px;
-  bottom: 64px;
-  width: 224px;
-  background: var(--bg-tertiary);
-  border-radius: var(--r-md);
-  border: 1px solid var(--divider-strong);
-  box-shadow: var(--shadow-lg);
-  z-index: 90;
-  overflow: hidden;
-  animation: slide-up 0.2s var(--ease);
+.vc-bar-left {
+  display: flex; align-items: center; gap: 8px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--divider-strong);
+  padding-right: 12px;
 }
-
-.voice-panel-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 10px;
-  font-size: 12px; font-weight: 700;
+.vc-bar-icon { font-size: 16px; }
+.vc-bar-status {
+  font-size: 11px; font-weight: 700;
   color: var(--success);
-  background: var(--success-subtle);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.vc-bar-channel {
+  font-size: 11px; color: var(--text-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 120px;
 }
 
-.voice-panel-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  padding: 6px;
-  max-height: 160px;
-  overflow-y: auto;
+/* Scrollable tiles row */
+.vc-tiles {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 0;
+  scrollbar-width: none;
 }
+.vc-tiles::-webkit-scrollbar { display: none; }
 
-.voice-tile {
-  background: var(--bg-primary);
-  border-radius: var(--r-sm);
-  aspect-ratio: 4/3;
+.vc-tile {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  gap: 2px;
+  flex-shrink: 0;
   position: relative;
-  overflow: hidden;
-  transition: box-shadow var(--t-fast);
+  border-radius: var(--r-sm);
+  padding: 2px 4px;
+  border: 2px solid transparent;
+  transition: border-color 0.1s;
+  min-width: 52px;
 }
-.voice-tile.speaking {
-  box-shadow: inset 0 0 0 2px var(--success);
-}
-.voice-tile video {
-  width: 100%; height: 100%;
+.vc-tile.speaking { border-color: var(--success); }
+
+.vc-tile video {
+  width: 72px; height: 48px;
   object-fit: cover;
-  position: absolute; inset: 0;
+  border-radius: 4px;
+  background: #000;
+  display: block;
 }
-.voice-tile-avatar {
+
+.vc-tile-av {
   width: 36px; height: 36px;
   border-radius: 50%;
   background: var(--brand);
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 700; color: #fff;
   overflow: hidden;
+  flex-shrink: 0;
 }
-.voice-tile-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.voice-tile-label {
-  position: absolute;
-  bottom: 2px; left: 4px; right: 4px;
+.vc-tile-av img { width: 100%; height: 100%; object-fit: cover; }
+
+.vc-tile-label {
   font-size: 9px; font-weight: 600;
-  color: #fff;
-  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  color: var(--text-muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 72px; text-align: center;
 }
 
-.voice-panel-controls {
+.vc-tile-mic {
+  position: absolute;
+  top: 2px; right: 2px;
+  font-size: 10px;
+  background: var(--danger);
+  border-radius: 50%;
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Controls */
+.vc-bar-controls {
   display: flex;
-  justify-content: center;
-  gap: 8px;
-  padding: 8px;
-  border-top: 1px solid var(--divider);
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--divider-strong);
+  padding-left: 12px;
 }
-.call-ctrl-btn.small {
-  width: 36px; height: 36px;
-  background: var(--bg-secondary);
+
+.vc-ctrl {
+  width: 34px; height: 34px;
+  border-radius: var(--r-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,0.06);
   color: var(--text-secondary);
+  cursor: pointer; border: none;
+  transition: background 0.12s, color 0.12s, transform 0.1s;
+  flex-shrink: 0;
 }
-.call-ctrl-btn.small svg { width: 16px; height: 16px; }
-.call-ctrl-btn.small:hover { background: var(--bg-hover); }
-.call-ctrl-btn.small.muted { background: var(--danger); color: #fff; }
-.call-ctrl-btn.small.call-ctrl-end {
-  background: var(--danger) !important;
+.vc-ctrl svg { width: 18px; height: 18px; }
+.vc-ctrl:hover { background: rgba(255,255,255,0.12); color: var(--text-white); }
+.vc-ctrl.active {
+  background: var(--danger);
   color: #fff;
 }
-.call-ctrl-btn.small.call-ctrl-end svg { transform: rotate(135deg); }
+.vc-ctrl-leave {
+  background: transparent;
+  color: var(--danger);
+}
+.vc-ctrl-leave:hover {
+  background: var(--danger) !important;
+  color: #fff !important;
+}
 
-/* Expanded mode — bigger grid, more visible */
-.voice-call-panel.expanded {
-  width: 360px;
-}
-.voice-call-panel.expanded .voice-panel-grid {
-  grid-template-columns: 1fr 1fr 1fr;
-  max-height: 260px;
-}

@@ -1,10 +1,8 @@
 // storage.js — file helpers
-// Avatars and server icons are stored as base64 data URLs directly in
-// the Realtime Database (no Firebase Storage required).
-// Message attachments use Firebase Storage if available, else are skipped.
+// Everything stored as base64 in RTDB — no Firebase Storage needed.
 
-/** Resize + compress an image File → base64 data URL (max 128x128, ~15 KB) */
-function imageFileToBase64(file, maxSize = 128) {
+/** Resize + compress image File → base64 JPEG data URL */
+function imageFileToBase64(file, maxSize = 128, quality = 0.75) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -16,12 +14,9 @@ function imageFileToBase64(file, maxSize = 128) {
         const w = Math.round(img.width  * scale);
         const h = Math.round(img.height * scale);
         const canvas = document.createElement("canvas");
-        canvas.width  = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, w, h);
-        // Quality 0.75 keeps file size small enough for RTDB
-        resolve(canvas.toDataURL("image/jpeg", 0.75));
+        canvas.width = w; canvas.height = h;
+        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
       };
       img.src = e.target.result;
     };
@@ -29,30 +24,25 @@ function imageFileToBase64(file, maxSize = 128) {
   });
 }
 
-/** Upload user avatar → returns base64 data URL */
+/** Avatar → base64, max 128px */
 async function uploadAvatar(file, uid) {
-  return imageFileToBase64(file, 128);
+  return imageFileToBase64(file, 128, 0.8);
 }
 
-/** Upload server icon → returns base64 data URL */
+/** Server icon → base64, max 128px */
 async function uploadServerIcon(file, serverId) {
-  return imageFileToBase64(file, 128);
+  return imageFileToBase64(file, 128, 0.8);
 }
 
-/** Upload message attachment via Firebase Storage → { url, type, name } */
-async function uploadAttachment(file, chatPath) {
+/**
+ * Message attachment → base64 stored in DB.
+ * Images are compressed to max 800px wide.
+ * Other file types (video, pdf, zip) are read as raw base64 data URLs.
+ * Returns { dataUrl, type, name, size }
+ */
+async function uploadAttachment(file) {
   const ext  = file.name.split(".").pop().toLowerCase();
-  const name = Date.now() + "_" + file.name;
-  const path = "attachments/" + chatPath + "/" + name;
-
-  const ref  = storage.ref(path);
-  const task = ref.put(file);
-
-  const url = await new Promise((resolve, reject) => {
-    task.on("state_changed", null, reject, async () => {
-      resolve(await task.snapshot.ref.getDownloadURL());
-    });
-  });
+  const MB   = file.size / 1024 / 1024;
 
   let type = "file";
   if (["jpg","jpeg","png","gif","webp"].includes(ext)) type = "image";
@@ -60,5 +50,29 @@ async function uploadAttachment(file, chatPath) {
   else if (ext === "pdf")                               type = "pdf";
   else if (ext === "zip")                               type = "zip";
 
-  return { url, type, name: file.name };
+  // Hard cap — RTDB nodes have a 10 MB limit per write
+  if (MB > 8) {
+    throw new Error("File too large for direct upload. Max size is 8 MB.");
+  }
+
+  if (type === "image") {
+    // Compress images to max 800px
+    const dataUrl = await imageFileToBase64(file, 800, 0.82);
+    return { dataUrl, type, name: file.name, size: MB };
+  }
+
+  // For non-image files, read as raw base64 data URL
+  const dataUrl = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onerror = reject;
+    r.onload  = e => resolve(e.target.result);
+    r.readAsDataURL(file);
+  });
+
+  // Extra guard on actual base64 size
+  if (dataUrl.length > 8 * 1024 * 1024) {
+    throw new Error("File too large after encoding. Try a smaller file.");
+  }
+
+  return { dataUrl, type, name: file.name, size: MB };
 }
