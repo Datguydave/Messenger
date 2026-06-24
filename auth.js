@@ -192,6 +192,9 @@ auth.onAuthStateChanged(async user => {
     initServers();
     initSettings();
     if (typeof initCalling === "function") initCalling();
+    if (typeof initActivityTracking === "function") initActivityTracking();
+    if (typeof requestNotifPermission === "function") requestNotifPermission();
+    if (typeof initPasteAttachment === "function") initPasteAttachment();
 
   } else {
     AppState.currentUser = null;

@@ -2,6 +2,10 @@
 
 function initSettings() {
   document.getElementById("open-settings-btn").addEventListener("click", openSettingsModal);
+  const decoBtn = document.getElementById("open-deco-btn");
+  if (decoBtn) decoBtn.addEventListener("click", () => {
+    if (typeof openDecorationsModal === "function") openDecorationsModal();
+  });
 
   // Live avatar preview on file select
   document.getElementById("settings-avatar-input").addEventListener("change", function () {

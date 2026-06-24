@@ -60,6 +60,9 @@ document.getElementById("clear-attachment").addEventListener("click", () => {
 
 // ── Send message ──────────────────────────────────────────────────────
 document.getElementById("send-btn").addEventListener("click", sendMessage);
+document.getElementById("poll-btn").addEventListener("click", () => {
+  if (typeof openPollCreator === "function") openPollCreator();
+});
 document.getElementById("message-input").addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
@@ -176,7 +179,12 @@ function appendMessage(msg, listEl, mode) {
   const placeholder = listEl.querySelector(".chat-placeholder");
   if (placeholder) placeholder.remove();
 
-  listEl.appendChild(buildMessageEl(msg, isCompact, mode));
+  if (msg.type === "poll") {
+    listEl.appendChild(buildPollMessageEl(msg, mode));
+  } else {
+    listEl.appendChild(buildMessageEl(msg, isCompact, mode));
+    if (typeof checkMentionNotify === "function") checkMentionNotify(msg);
+  }
 }
 
 // ── Update an existing message element in place ───────────────────────
@@ -309,6 +317,52 @@ function buildMessageEl(msg, compact, mode) {
 function isServerMod() {
   if (!AppState.activeServer) return false;
   return AppState.activeServer.data.owner === AppState.currentUser.uid;
+}
+
+function buildPollMessageEl(msg, mode) {
+  const group = document.createElement("div");
+  group.className = "message-group";
+  group.dataset.msgId = msg.id;
+
+  const avatarDiv = document.createElement("div");
+  avatarDiv.className = "msg-avatar";
+  if (msg.avatar) {
+    const img = document.createElement("img"); img.src = msg.avatar; img.alt = msg.username||"";
+    avatarDiv.appendChild(img);
+  } else {
+    avatarDiv.textContent = (msg.username||"?")[0].toUpperCase();
+    avatarDiv.style.background = stringToColor(msg.username||"?");
+  }
+
+  const body = document.createElement("div");
+  body.className = "msg-body";
+  const meta = document.createElement("div");
+  meta.className = "msg-meta";
+  meta.innerHTML = "<span class='msg-author'>" + escapeHtml(msg.username||"Unknown") + "</span><span class='msg-time'>" + formatTime(msg.timestamp) + "</span>";
+  body.appendChild(meta);
+
+  if (typeof buildPollEl === "function") {
+    // Listen live for vote updates
+    let pollRef;
+    if (mode === "dm" && AppState.activeDM) {
+      pollRef = db.ref("dms/" + AppState.activeDM.chatId + "/" + msg.id);
+    } else if (AppState.activeServer && AppState.activeChannel) {
+      pollRef = db.ref("messages/" + AppState.activeServer.id + "/" + AppState.activeChannel.id + "/" + msg.id);
+    }
+    const pollContainer = document.createElement("div");
+    body.appendChild(pollContainer);
+
+    const render = (data) => {
+      pollContainer.innerHTML = "";
+      pollContainer.appendChild(buildPollEl(data, msg.id, mode));
+    };
+    render(msg);
+    if (pollRef) pollRef.on("value", snap => { if (snap.exists()) render(snap.val()); });
+  }
+
+  group.appendChild(avatarDiv);
+  group.appendChild(body);
+  return group;
 }
 
 // ── Edit ─────────────────────────────────────────────────────────────

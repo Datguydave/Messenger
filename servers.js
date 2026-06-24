@@ -184,6 +184,13 @@ document.getElementById("copy-server-id-btn").addEventListener("click", () => {
   navigator.clipboard.writeText(val).then(() => showToast("Server ID " + val + " copied!", "success"));
 });
 
+document.getElementById("ss-roles-btn") && document.getElementById("ss-roles-btn").addEventListener("click", () => {
+  if (AppState.activeServer && typeof openRolesModal === "function") {
+    closeModal("server-settings-modal");
+    openRolesModal(AppState.activeServer.id);
+  }
+});
+
 document.getElementById("ss-save-btn").addEventListener("click", async () => {
   const { id } = AppState.activeServer;
   const newName = document.getElementById("ss-name-input").value.trim();
@@ -303,3 +310,14 @@ document.getElementById("toggle-members-btn").addEventListener("click", () => {
   AppState.membersVisible = !AppState.membersVisible;
   ms.style.display = AppState.membersVisible ? "" : "none";
 });
+
+
+async function showAssignRoleMenu(e, sid, targetUid) {
+  const snap = await db.ref("roles/" + sid).get();
+  if (!snap.exists()) { showToast("No custom roles yet. Create them in Server Settings → Manage Roles."); return; }
+  const items = Object.entries(snap.val()).map(([roleId, role]) => ({
+    label: role.name,
+    action: () => assignRoleToMember && assignRoleToMember(sid, targetUid, roleId),
+  }));
+  showContextMenu(e.clientX, e.clientY, items);
+}

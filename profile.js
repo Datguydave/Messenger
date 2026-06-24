@@ -7,11 +7,22 @@ async function showProfile(uid, anchorEl) {
   const profile = await fetchProfile(uid);
   if (!profile) return;
 
-  // Avatar
-  renderAvatar(document.getElementById("popup-avatar"), profile);
+  // Banner
+  const bannerEl = document.querySelector(".profile-popup-banner");
+  if (bannerEl && typeof getBannerStyle === "function") {
+    const bs = getBannerStyle(profile);
+    bannerEl.style.cssText = bs || "background:linear-gradient(135deg,#5865F2,#7289da)";
+  }
+
+  // Avatar with frame
+  const avEl = document.getElementById("popup-avatar");
+  renderAvatar(avEl, profile);
+  if (typeof applyDecorationsToAvatar === "function") applyDecorationsToAvatar(avEl, profile);
 
   // Name
-  document.getElementById("popup-username").textContent = profile.username || "Unknown";
+  const npEl = document.getElementById("popup-username");
+  const npHtml = typeof getNameplateHTML === "function" ? getNameplateHTML(profile) : "";
+  npEl.innerHTML = escapeHtml(profile.username || "Unknown") + (npHtml ? " " + npHtml : "");
 
   // Status line with coloured dot
   const st = profile.status || "Offline";
